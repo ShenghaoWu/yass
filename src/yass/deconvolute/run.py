@@ -3,7 +3,9 @@ import logging
 
 import numpy as np
 
+from yass.deconvolute.util import calculate_temp_temp, small_shift_templates, make_spt_list, get_smaller_shifted_templates 
 from yass.deconvolute.deconvolve import deconvolve, fix_indexes
+from yass.geometry import make_channel_index
 from yass import read_config
 from yass.batch import BatchProcessor
 
@@ -49,35 +51,59 @@ def run(spike_index, templates,
     # read config file
     CONFIG = read_config()
 
-    # read recording
-    recording_path = os.path.join(CONFIG.data.root_folder,
-                                  output_directory,
-                                  recordings_filename)
-    bp = BatchProcessor(recording_path,
-                        buffer_size=templates.shape[1])
-
     logging.debug('Starting deconvolution. templates.shape: {}, '
                   'spike_index.shape: {}'
                   .format(templates.shape, spike_index.shape))
 
-    # run deconvolution algorithm
-    n_rf = int(CONFIG.deconvolution.n_rf*CONFIG.recordings.sampling_rate/1000)
+    # channel index    
+    channel_index = make_channel_index(CONFIG.neighChannels, CONFIG.geom)
+
+    # necessary parameters
+    n_channels, n_temporal_big, n_templates = templates.shape
+    #n_shifts = CONFIG.deconvolution.upsample_factor
+    n_shifts = 3
+    n_explore = CONFIG.deconvolution.n_explore
+    threshold_d = CONFIG.deconvolution.threshold_dd
+
+    # get spike_index as list
+    spt_list = make_spt_list(spike_index, n_channels)    
+
+    # upsample template
+    shifted_templates = small_shift_templates(templates, n_shifts)
+
+    # principal channels
+    principal_channels = np.argmax(np.max(np.abs(shifted_templates), (0,2)), 0)
+
+    # localize it
+    templates_small = get_smaller_shifted_templates(shifted_templates,
+                                                    channel_index,
+                                                    principal_channels,
+                                                    CONFIG.spikeSize)
+
+    temp_temp = calculate_temp_temp(shifted_templates, channel_index,
+                                    (2*CONFIG.spikeSize+1))
 
     # run nn preprocess batch-wsie
+    recording_path = os.path.join(CONFIG.data.root_folder,
+                                  output_directory,
+                                  recordings_filename)
+    bp = BatchProcessor(recording_path,
+                        buffer_size=n_temporal_big)
     mc = bp.multi_channel_apply
     res = mc(
         deconvolve,
         mode='memory',
         cleanup_function=fix_indexes,
         pass_batch_info=True,
-        templates=templates,
-        spike_index=spike_index,
-        spike_size=CONFIG.spikeSize,
-        n_explore=CONFIG.deconvolution.n_explore,
-        n_rf=n_rf,
-        upsample_factor=CONFIG.deconvolution.upsample_factor,
-        threshold_a=CONFIG.deconvolution.threshold_a,
-        threshold_dd=CONFIG.deconvolution.threshold_dd)
+        channel_index=channel_index,
+        spt_list=spt_list,
+        shifted_templates=shifted_templates,
+        templates_small=templates_small,
+        principal_channels=principal_channels,
+        n_explore=n_explore,
+        temp_temp=temp_temp,
+        threshold_d=threshold_d
+    )   
 
     spike_train = np.concatenate([element for element in res], axis=0)
 

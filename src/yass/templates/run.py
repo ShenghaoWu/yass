@@ -62,4 +62,4 @@ def run(spike_train, output_directory='tmp/',
     logger.info("Templates done in {0} seconds.".format(
         (currentTime - startTime).seconds))
 
-    return templates
+    return templates, spike_train

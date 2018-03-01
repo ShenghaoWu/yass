@@ -134,7 +134,7 @@ def run_cluster(scores, masks, groups, spike_times,
     return spike_train[idx_sort]
 
 
-def run_cluster_location(scores, spike_times, CONFIG):
+def run_cluster_location(scores, groups, spike_times, CONFIG):
     """
     run clustering algorithm using MFM and location features
 
@@ -176,7 +176,7 @@ def run_cluster_location(scores, spike_times, CONFIG):
 
             # make a fake mask of ones to run clustering algorithm
             mask = np.ones((n_data, 1))
-            group = np.arange(n_data)
+            group = groups[channel]
             cluster_id = spikesort(score, mask,
                                    group, CONFIG)
 
