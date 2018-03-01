@@ -14,7 +14,7 @@ optional_sections:
 
   triage:
     nearest_neighbors: 20
-    percent: 0.05
+    percent: 0.1
 
   coreset:
     clusters: 10
@@ -25,7 +25,7 @@ optional_sections:
     n_split: 5
 
   templates:
-    merge_threshold: [0.9, 0.7]
+    merge_threshold: [0.8, 0.7]
 
 
 fields_validator:
