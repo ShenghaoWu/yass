@@ -25,7 +25,7 @@ optional_sections:
     n_split: 5
 
   templates:
-    merge_threshold: [0.8, 0.7]
+    merge_threshold: [0.8, 0.6]
 
 
 fields_validator:

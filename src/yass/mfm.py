@@ -829,11 +829,12 @@ def birth_move(maskedData, vbParam, suffStat, param, L):
         (vbParam.invVhat, vbParamPrime.invVhat), axis=2)
     vbParam.nuhat = np.concatenate(
         (vbParam.nuhat, vbParamPrime.nuhat), axis=0)
-    L = np.concatenate((L, np.ones(extraK)), axis=0)
 
     vbParam.update_local(maskedData)
     suffStat = suffStatistics(maskedData, vbParam)
     vbParam.update_global(suffStat, param)
+    nbrith = vbParamPrime.rhat.shape[1]
+    L = np.concatenate((L, np.ones(nbrith)), axis=0)
 
     return vbParam, suffStat, L
 
@@ -842,6 +843,7 @@ def merge_move(maskedData, vbParam, suffStat, param, L, check_full):
     n_merged = 0
     ELBO = ELBO_Class(maskedData, suffStat, vbParam, param)
     nfeature, K, nchannel = vbParam.muhat.shape
+        
     if K > 1:
         all_checked = 0
     else:
@@ -965,7 +967,7 @@ def spikesort(score, mask, group, param):
     for j in range(score.shape[0]):
         assignment[j] = assignmentTemp[group[j]]
 
-    idx_triage = cluster_triage(vbParam, score, 3)
+    idx_triage = cluster_triage(vbParam, score, 2)
     assignment[idx_triage] = -1
 
     return assignment
