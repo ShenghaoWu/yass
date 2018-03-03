@@ -162,7 +162,11 @@ def run_cluster_location(scores, spike_times, CONFIG):
     n_channels = len(scores)
     global_spike_time = np.zeros(0).astype('uint16')
     global_cluster_id = np.zeros(0).astype('uint16')
-
+    outlier_st = []
+    outlier_clusterid = []
+    outlier_vbPar = []
+    outlier_scores = []
+    
     # run clustering algorithm per main channel
     for channel in range(n_channels):
 
@@ -177,9 +181,14 @@ def run_cluster_location(scores, spike_times, CONFIG):
             # make a fake mask of ones to run clustering algorithm
             mask = np.ones((n_data, 1))
             group = np.arange(n_data)
-            cluster_id = spikesort(score, mask,
+            cluster_id, vbParam = spikesort(score, mask,
                                    group, CONFIG)
-
+            
+            outlier_st += [spike_time]
+            outlier_clusterid += [cluster_id]
+            outlier_vbPar += [vbParam] 
+            outlier_scores += [score]
+            
             idx_triage = (cluster_id == -1)
 
             cluster_id = cluster_id[~idx_triage]
@@ -191,6 +200,8 @@ def run_cluster_location(scores, spike_times, CONFIG):
                                                       cluster_id,
                                                       global_spike_time,
                                                       global_cluster_id)
+            
+            
 
     # make spike train
     spike_train = np.hstack(
@@ -200,7 +211,7 @@ def run_cluster_location(scores, spike_times, CONFIG):
     # sort based on spike_time
     idx_sort = np.argsort(spike_train[:, 0])
 
-    return spike_train[idx_sort]
+    return spike_train[idx_sort], outlier_st, outlier_clusterid, outlier_vbPar, outlier_scores
 
 
 def global_cluster_info(spike_time, cluster_id,
@@ -253,7 +264,7 @@ def global_cluster_info(spike_time, cluster_id,
 
     # append assignment
     if global_cluster_id.size == 0:
-        cluster_id_max = 0
+        cluster_id_max = -1
     else:
         cluster_id_max = np.max(global_cluster_id)
     global_cluster_id = np.hstack([

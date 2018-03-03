@@ -75,12 +75,12 @@ class RecordingBatchIterator(object):
         ts = np.fromfile(
             self.file,
             count=self.n_chan * self.batch_time_samples,
-            dtype=np.int16)
+            dtype=np.float32)
         ts = np.reshape(ts, [self.batch_time_samples, self.n_chan])
         if not self.filter_std:
             return ts / self.scale
-        ts = butterworth(ts, 300, 0.1, 3, self.s_rate)
-        ts = ts / np.std(ts)
+#         ts = butterworth(ts, 300, 0.1, 3, self.s_rate)
+#         ts = ts / np.std(ts)
         if not self.whiten:
             return ts
         ts = whitening(ts, self.neighbs, 40)
@@ -377,8 +377,8 @@ class RecordingAugmentation(object):
                 except Exception as e:
                     status.append('warning:{}'.format(str(e)))
                     boundary_violation += 1
-            ts *= scale
-            ts = ts.astype('int16')
+            ts = ts * scale
+            ts = ts.astype('float32')
             ts.tofile(f)
         # Reassign spikes from moved clusters to new units.
         new_unit_id = self.template_comp.n_units

@@ -69,7 +69,7 @@ def run(scores, spike_index):
         ##############
         _b = datetime.datetime.now()
         logger.info("Clustering...")
-        spike_train = run_cluster_location(scores,
+        spike_train, outlier_st, outlier_clusterid, outlier_vbPar, outlier_scores = run_cluster_location(scores,
                                            spike_index, CONFIG)
         Time['s'] += (datetime.datetime.now()-_b).total_seconds()
 
@@ -116,4 +116,4 @@ def run(scores, spike_index):
     logger.info("\tmasking:\t{0} seconds".format(Time['m']))
     logger.info("\tclustering:\t{0} seconds".format(Time['s']))
 
-    return spike_train
+    return spike_train, outlier_st, outlier_clusterid, outlier_vbPar, outlier_scores

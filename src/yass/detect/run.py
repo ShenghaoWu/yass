@@ -13,6 +13,7 @@ from yass.threshold import detect
 from yass.threshold import dimensionality_reduction as dim_red
 from yass import neuralnetwork
 from yass.preprocess import whiten
+import scipy.special as ss
 
 
 # TODO: missing parameters docs
@@ -146,7 +147,7 @@ def run_threshold(standarized_path, standarized_params, channel_index,
     #################
 
     scores = whiten.score(scores, clear[:, 1], whiten_filter)
-
+    
     # TODO: this shouldn't be here
     # transform scores to location + shape feature space
     if CONFIG.clustering.clustering_method == 'location':
@@ -294,6 +295,12 @@ def get_locations_features(scores, rotation, main_channel,
         np.reshape(np.multiply(np.matmul(reshaped_score, rot_rot),
                                reshaped_score),
                    [n_data, n_neigh, n_features]), 2))
+#     np.save('energy_before_process.npy',energy)
+#     energy[energy == 0.0] = np.NaN
+#     energy = (energy - np.nanmean(energy, axis = 1,keepdims = True))/ np.nanstd(energy, axis = 1,keepdims = True)
+#     energy = ss.expit(energy)
+#     energy[np.isnan(energy)] = 0.0
+#     np.save('energy.npy',energy)
 
     channel_index_per_data = channel_index[main_channel, :]
 
@@ -327,7 +334,7 @@ def get_locations_features_threshold(scores, main_channel,
     n_data, n_features, n_neigh = scores.shape
 
     energy = np.linalg.norm(scores, axis=1)
-
+       
     channel_index_per_data = channel_index[main_channel, :]
 
     channel_geometry = np.vstack((channel_geometry, np.zeros((1, 2), 'int32')))

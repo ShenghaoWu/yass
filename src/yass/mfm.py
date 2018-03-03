@@ -972,7 +972,7 @@ def spikesort(score, mask, group, param):
     idx_triage = cluster_triage(vbParam, score, 3)
     assignment[idx_triage] = -1
 
-    return assignment
+    return assignment, vbParam
 
 
 def split_merge(maskedData, param):
