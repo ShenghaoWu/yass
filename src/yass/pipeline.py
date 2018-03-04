@@ -109,19 +109,22 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
 
     # cluster
     spike_train_clear = cluster.run(score, spike_index_clear)
+    path_to_spike_train_clear = path.join(TMP_FOLDER, 'spike_train_clear.npy')
+    logging.info('Saving clear spike train in {}'.format(path_to_spike_train_clear))
+    np.save(path_to_spike_train_clear, spike_train_clear)
 
     # get templates
     templates, spike_train_clear = get_templates.run(spike_train_clear)
+
+    # run deconvolution
+    spike_train, templates = deconvolute.run(spike_index_all, templates,
+                                             output_directory=output_dir)
 
     # save templates
     path_to_templates = path.join(TMP_FOLDER, 'templates.npy')
     logging.info('Saving templates in {}'.format(path_to_templates))
     np.save(path_to_templates, templates)
     
-    # run deconvolution
-    spike_train = deconvolute.run(spike_index_all, templates,
-                                  output_directory=output_dir)
-
     # save metadata in tmp
     path_to_metadata = path.join(TMP_FOLDER, 'metadata.yaml')
     logging.info('Saving metadata in {}'.format(path_to_metadata))

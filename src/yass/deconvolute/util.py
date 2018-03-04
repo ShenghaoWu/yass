@@ -1,28 +1,60 @@
 from scipy.interpolate import interp1d
 import numpy as np
 
-def calculate_temp_temp(shifted_templates, channel_index, waveform_size_small):
+def clean_up(spike_train, templates, max_spikes):
+    
+    n_templates, n_temporal_big, n_channels = templates.shape
+    
+    units_keep  = np.zeros(n_templates, 'bool')
+    for k in range(n_templates):
+        if np.sum(spike_train[:, 1] == k) >= max_spikes:
+            units_keep[k] = 1
+            
+    Ks = np.where(units_keep)[0]
+    templates_clean = np.zeros((Ks.shape[0], n_temporal_big, n_channels))
+    spike_train_clean = np.zeros((0, 2), 'int32')
+    for j, k in enumerate(Ks):
+        templates_clean[j] = templates[k]
+        spike_train_temp = np.copy(spike_train[spike_train[:, 1] == k])
+        spike_train_temp[:, 1] = j
+        spike_train_clean = np.vstack((spike_train_clean,
+                                       spike_train_temp))
+        
+    idx_sort = np.argsort(spike_train_clean[:, 0])
+    
+    return spike_train_clean[idx_sort], templates_clean
+        
+    
+    
+def calculate_temp_temp(temporal_features, spatial_features):
 
-    n_shifts, n_channels, waveform_size, n_templates = shifted_templates.shape
-    n_neigh = channel_index.shape[1]
-    principal_channels = np.argmax(np.max(np.abs(shifted_templates), (0,2)), 0)
+    n_templates, n_shifts, waveform_size, n_features = temporal_features.shape
 
-    mid_point = int((waveform_size-1)/2)
-    R_small = int((waveform_size_small-1)/2)
     temp_temp = np.zeros((n_templates, n_templates, n_shifts, n_shifts,
-                          waveform_size+waveform_size_small-1), 'float32')
+                          2*waveform_size-1), 'float32')
+    n_pad = waveform_size - 1
+    
+    for j1 in range(n_features):
+        for j2 in range(n_features):
+            for s1 in range(n_shifts):
+                for s2 in range(n_shifts):
+                    temp1 = np.pad(temporal_features[:, s1, :, j1],
+                                   ((0, 0), (0, n_pad)),
+                                   mode='constant')
+                    temp2 = np.pad(temporal_features[:, s2, :, j2],
+                                   ((0, 0), (0, n_pad)),
+                                   mode='constant')
+                    spat1 = spatial_features[:, s1, j1]
+                    spat2 = spatial_features[:, s2, j2]
 
-    for s1 in range(n_shifts):
-        for s2 in range(n_shifts):
-            for k in range(n_templates):
-                ch_idx = channel_index[principal_channels[k]]
-                ch_idx = ch_idx[ch_idx < n_channels]
-                temp_ = shifted_templates[:, ch_idx]
-                temp_k = np.flip(temp_[s1, :, mid_point-R_small:mid_point+R_small+1, k], 1)
-
-                for k2 in range(n_templates):
-                    for j in range(ch_idx.shape[0]):
-                        temp_temp[k, k2, s1, s2] += np.convolve(temp_[s2, j, :, k2], temp_k[j])
+                    ftemp1 = np.fft.fft(temp1, axis=1)
+                    ftemp2 = np.conj(np.fft.fft(temp2, axis=1))
+                    temporal_conv = np.real(np.fft.ifft(np.matmul(
+                        np.transpose(ftemp1[np.newaxis]),
+                        np.transpose(ftemp2[np.newaxis], (2,0,1))), axis=0))
+                    temporal_conv = np.fft.fftshift(temporal_conv, axes=0)
+                    temp_temp[:, :, s1, s2] += np.transpose(
+                        temporal_conv*np.matmul(spat1, spat2.T)[np.newaxis], (1, 2, 0))
 
     return temp_temp
 
@@ -122,23 +154,31 @@ def small_shift_templates(templates, n_shifts=5):
     """
 
     # get shapes
-    n_channels, waveform_size, n_templates = templates.shape
+    n_templates, waveform_size, n_channels = templates.shape
 
     # upsample using cubic interpolation
     x = np.linspace(0, waveform_size-1, num=waveform_size, endpoint=True)
     shifts = np.linspace(-0.5, 0.5, n_shifts, endpoint=False)
 
-    shifted_templates = np.zeros((n_shifts, n_channels, waveform_size, n_templates))    
+    shifted_templates = np.zeros((n_templates, n_shifts, waveform_size, n_channels))    
     for k in range(n_templates):
-        ff = interp1d(x, templates[:, :, k], kind='cubic')
+        ff = interp1d(x, templates[k], kind='cubic', axis=0)
 
         # get shifted templates
         for j in range(n_shifts):
             xnew = x - shifts[j]
             idx_good = np.logical_and(xnew >= 0, xnew <= waveform_size-1)
-            shifted_templates[j][:, idx_good, k] = ff(xnew[idx_good])
+            shifted_templates[k,j][idx_good] = ff(xnew[idx_good])
 
     return shifted_templates
+
+def svd_shifted_templates(shifted_templates, n_features):
+    
+    a,b,c = np.linalg.svd(shifted_templates,[0,3,1,2])
+    temporal_features = a[:,:,:,:n_features]
+    spatial_features = c[:,:,:n_features,:]*b[:,:,:n_features][:,:,:,np.newaxis]
+    
+    return temporal_features, spatial_features
 
 
 def make_spt_list(spike_index, n_channels):
