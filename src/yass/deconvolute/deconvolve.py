@@ -96,13 +96,12 @@ def deconvolve(recordings, idx_local, idx,
                     -n_explore,n_explore+1), k] = 2*dot[:, :, j]  - \
                 norms[k][np.newaxis, np.newaxis]
 
-    d_max_along_shift = np.max(d_matrix, 2)
-
     spike_train = np.zeros((0, 2), 'int32')
-
-    while np.max(d_max_along_shift) > threshold_d:
-        print(np.max(d_max_along_shift))
-        max_d = np.max(d_max_along_shift, 1)
+    max_d = np.max(d_matrix, (1,2))
+    max_val = np.max(max_d)
+    while max_val > threshold_d:
+        print(max_val)
+        # find spike time
         peaks = argrelmax(max_d)[0]
         idx_good = peaks[np.argmax(
             max_d[peaks[:, np.newaxis] + np.arange(-2*R,2*R+1)],1) == (2*R)]
@@ -112,21 +111,35 @@ def deconvolve(recordings, idx_local, idx,
                                  (spike_time.shape[0], -1)),1),
             [n_templates, n_shifts])
 
+        # prevent refractory period violation
         rf_area = spike_time[:, np.newaxis] + np.arange(-R,R+1)
         rf_area_t = np.tile(template_id[:,np.newaxis],(1, 2*R+1))
         d_matrix[rf_area, rf_area_t] = -np.Inf
-        d_max_along_shift[rf_area, rf_area_t] = -np.Inf
-
+        rf_area = np.reshape(rf_area, -1)
+        max_d[rf_area] = np.max(d_matrix[rf_area], (1,2))
+        
+        # update nearby times
+        time_affected = np.zeros(max_d.shape[0], 'bool')
         for j in range(spike_time.shape[0]):
             t_neigh, k_neigh = np.where(
-                d_max_along_shift[spike_time[j]-2*R:spike_time[j]+2*R] > -np.Inf)
+                d_matrix[spike_time[j]-2*R:spike_time[j]+2*R, :, 0] > -np.Inf)
             t_neigh_abs = spike_time[j] + t_neigh - 2*R
-            d_matrix[t_neigh_abs, k_neigh]
-            d_matrix[t_neigh_abs, k_neigh] -= 2*temp_temp[
+            d_matrix[t_neigh_abs, k_neigh] -= temp_temp[
                 template_id[j], k_neigh, max_shift[j], :, t_neigh]
-            d_max_along_shift[t_neigh_abs, k_neigh] = np.max(
-                d_matrix[t_neigh_abs, k_neigh], 1)
-
+            time_affected[t_neigh_abs] = 1
+            
+        max_d[time_affected] = np.max(d_matrix[time_affected], (1,2))
+        max_val = np.max(max_d)
+        
+        # update nearby times
+        #for j in range(spike_time.shape[0]):
+        #    t_neigh = np.where(max_d[spike_time[j]-2*R:spike_time[j]+2*R+1] > -np.Inf)[0]
+        #    t_neigh_abs = spike_time[j] + t_neigh - 2*R
+        #    d_matrix[t_neigh_abs] -= temp_temp[template_id[j], :, max_shift[j], :, t_neigh]
+        #    max_d[t_neigh_abs] = np.max(d_matrix[t_neigh_abs],(1,2))  
+        #max_val = np.max(max_d)
+        
+        
         spike_train_temp = np.hstack((spike_time[:, np.newaxis],
                                       template_id[:, np.newaxis]))
         spike_train = np.concatenate((spike_train, spike_train_temp), 0)         

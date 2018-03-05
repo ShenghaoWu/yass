@@ -75,6 +75,7 @@ def run(spike_index, templates,
 
     # calculate convolution of pairwise templates
     temp_temp = calculate_temp_temp(temporal_features, spatial_features)
+    temp_temp *= 2
     
     # run nn preprocess batch-wsie
     recording_path = os.path.join(CONFIG.data.root_folder,
