@@ -108,10 +108,14 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
                                    output_directory=output_dir)
 
     # cluster
-    spike_train_clear = cluster.run(score, spike_index_clear)
     path_to_spike_train_clear = path.join(TMP_FOLDER, 'spike_train_clear.npy')
-    logging.info('Saving clear spike train in {}'.format(path_to_spike_train_clear))
-    np.save(path_to_spike_train_clear, spike_train_clear)
+    if os.path.exists(path_to_spike_train_clear):
+        spike_train_clear = np.load(path_to_spike_train_clear)
+
+    else:
+        spike_train_clear = cluster.run(score, spike_index_clear)
+        logging.info('Saving clear spike train in {}'.format(path_to_spike_train_clear))
+        np.save(path_to_spike_train_clear, spike_train_clear)
 
     # get templates
     templates, spike_train_clear = get_templates.run(spike_train_clear)

@@ -52,8 +52,9 @@ def run(spike_train, output_directory='tmp/',
     merge_threshold = CONFIG.templates.merge_threshold
 
     spike_train, templates = gam_templates(
-        spike_train, path_to_recordings, CONFIG.spikeSize,
-        CONFIG.templatesMaxShift, merge_threshold, CONFIG.neighChannels)
+        spike_train, path_to_recordings, CONFIG.resources.max_memory,
+        CONFIG.spikeSize, CONFIG.templatesMaxShift,
+        merge_threshold, CONFIG.neighChannels)
 
     Time['e'] += (datetime.datetime.now() - _b).total_seconds()
 

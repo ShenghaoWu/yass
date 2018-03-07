@@ -87,6 +87,7 @@ def run(spike_index, templates,
                                   output_directory,
                                   recordings_filename)
     bp = BatchProcessor(recording_path,
+                        max_memory=CONFIG.resources.max_memory,
                         buffer_size=2*n_temporal_big)
     mc = bp.multi_channel_apply
     res = mc(
