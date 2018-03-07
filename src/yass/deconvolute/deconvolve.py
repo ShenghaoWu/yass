@@ -51,7 +51,7 @@ def deconvolve(recordings, idx_local, idx,
     -----
     [Add a brief description of the method]
     """    
-    
+
     data_start = idx[0].start
     data_end = idx[0].stop
     # get offset that will be applied
@@ -100,7 +100,6 @@ def deconvolve(recordings, idx_local, idx,
     max_d = np.max(d_matrix, (1,2))
     max_val = np.max(max_d)
     while max_val > threshold_d:
-        print(max_val)
         # find spike time
         peaks = argrelmax(max_d)[0]
         idx_good = peaks[np.argmax(

@@ -66,23 +66,28 @@ def run(spike_index, templates,
 
     # get spike_index as list
     spt_list = make_spt_list(spike_index, n_channels)    
-
+    spike_index = 0
+    print('make list done')
+ 
     # upsample template
     shifted_templates = small_shift_templates(templates, n_shifts)
 
+    print('shifting done')
     # svd templates
     temporal_features, spatial_features = svd_shifted_templates(shifted_templates, n_features)
+
+    print('svd done')
 
     # calculate convolution of pairwise templates
     temp_temp = calculate_temp_temp(temporal_features, spatial_features)
     temp_temp *= 2
-    
+
     # run nn preprocess batch-wsie
     recording_path = os.path.join(CONFIG.data.root_folder,
                                   output_directory,
                                   recordings_filename)
     bp = BatchProcessor(recording_path,
-                        buffer_size=n_temporal_big)
+                        buffer_size=2*n_temporal_big)
     mc = bp.multi_channel_apply
     res = mc(
         deconvolve,

@@ -38,21 +38,14 @@ def calculate_temp_temp(temporal_features, spatial_features):
         for j2 in range(n_features):
             for s1 in range(n_shifts):
                 for s2 in range(n_shifts):
-                    temp1 = np.pad(temporal_features[:, s1, :, j1],
-                                   ((0, 0), (0, n_pad)),
-                                   mode='constant')
-                    temp2 = np.pad(temporal_features[:, s2, :, j2],
-                                   ((0, 0), (0, n_pad)),
-                                   mode='constant')
+                    temp1 = temporal_features[:, s1, :, j1]
+                    temp2 = np.flip(temporal_features[:, s2, :, j2], 1)
                     spat1 = spatial_features[:, s1, j1]
                     spat2 = spatial_features[:, s2, j2]
-
-                    ftemp1 = np.fft.fft(temp1, axis=1)
-                    ftemp2 = np.conj(np.fft.fft(temp2, axis=1))
-                    temporal_conv = np.real(np.fft.ifft(np.matmul(
-                        np.transpose(ftemp1[np.newaxis]),
-                        np.transpose(ftemp2[np.newaxis], (2,0,1))), axis=0))
-                    temporal_conv = np.fft.fftshift(temporal_conv, axes=0)
+                    temporal_conv = np.zeros((2*waveform_size-1, n_templates, n_templates))
+                    for k in range(n_templates):
+                        for k2 in range(n_templates):
+                            temporal_conv[:, k, k2] = np.convolve(temp2[k2], temp1[k])
                     temp_temp[:, :, s1, s2] += np.transpose(
                         temporal_conv*np.matmul(spat1, spat2.T)[np.newaxis], (1, 2, 0))
 

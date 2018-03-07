@@ -75,19 +75,19 @@ def run(scores, spike_index):
         ###########
         # Coreset #
         ###########
-        _b = datetime.datetime.now()
-        logger.info("Coresetting...")
-        groups = coreset(scores,
-                         CONFIG.coreset.clusters,
-                         CONFIG.coreset.threshold)
-        Time['c'] += (datetime.datetime.now() - _b).total_seconds()
+        #_b = datetime.datetime.now()
+        #logger.info("Coresetting...")
+        #groups = coreset(scores,
+        #                 CONFIG.coreset.clusters,
+        #                 CONFIG.coreset.threshold)
+        #Time['c'] += (datetime.datetime.now() - _b).total_seconds()
 
         ##############
         # Clustering #
         ##############
         _b = datetime.datetime.now()
         logger.info("Clustering...")
-        spike_train = run_cluster_location(scores, groups,
+        spike_train = run_cluster_location(scores,
                                            spike_index, CONFIG)
         Time['s'] += (datetime.datetime.now()-_b).total_seconds()
 
