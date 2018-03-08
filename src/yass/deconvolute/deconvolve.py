@@ -63,6 +63,8 @@ def deconvolve(recordings, idx_local, idx,
     principal_channels = np.argmax(np.max(np.abs(shifted_templates),(1,2)), 1)
     norms = np.sum(np.square(shifted_templates),(2,3))
 
+    visible_channels = np.max(np.abs(spatial_features), (1,2)) > np.min(np.max(np.abs(spatial_features), (1,2,3)))*0.5
+
     d_matrix = np.ones((recordings.shape[0],
                         n_templates,
                         n_shifts))*-np.Inf

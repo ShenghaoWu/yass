@@ -119,7 +119,7 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
 
     # get templates
     path_to_templates = path.join(TMP_FOLDER, 'templates.npy')
-    path_to_clear_spike_train_after_merge = path.join(TMP_FOLDER, 'templates.npy')
+    path_to_clear_spike_train_after_merge = path.join(TMP_FOLDER, 'spike_train_clear_after_merge.npy')
     if os.path.exists(path_to_clear_spike_train_after_merge):
         templates = np.load(path_to_templates)
         spike_train_clear = np.load(path_to_clear_spike_train_after_merge)
