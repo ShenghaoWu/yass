@@ -141,8 +141,7 @@ def _butterworth(ts, low_frequency, high_factor, order, sampling_frequency):
             output[:, c] = lfilter(b, a, ts[:, c])
 
         return output
-    
-    
+
 def fix_indexes(res, idx_local, idx, buffer_size):
     """Fixes indexes from detected spikes in batches
 

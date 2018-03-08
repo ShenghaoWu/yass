@@ -91,8 +91,7 @@ def deconvolve(recordings, idx_local, idx,
         
         d_matrix[spt[:, np.newaxis] + np.arange(-n_explore,n_explore+1), k] = 2*dot  - \
             norms[k][np.newaxis, np.newaxis]
-        
-
+    
     spike_train = np.zeros((0, 2), 'int32')
     max_d = np.max(d_matrix, (1,2))
     max_val = np.max(max_d)
