@@ -44,7 +44,6 @@ def get_templates(spike_train, path_to_recordings, max_memory, spike_size):
 def compute_weighted_templates(recording, idx_local, idx, previous_batch,
                                spike_train, spike_size, n_templates):
 
-    print('start')
     n_channels = recording.shape[1]
 
     # batch info
@@ -75,8 +74,6 @@ def compute_weighted_templates(recording, idx_local, idx, previous_batch,
     if previous_batch is not None:
         weighted_templates += previous_batch[0]
         weights += previous_batch[1]
-
-    print('end')
 
     return weighted_templates, weights
 

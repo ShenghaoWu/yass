@@ -66,35 +66,32 @@ def deconvolve(recordings, idx_local, idx,
     d_matrix = np.ones((recordings.shape[0],
                         n_templates,
                         n_shifts))*-np.Inf
+    
+    for k in range(n_templates):
+        spt = spt_list[principal_channels[k]]
+        spt = spt[np.logical_and(spt >= data_start + 100,
+                                 spt < data_end - 100)]
+        spt = spt - data_start + offset
 
-    for c in range(n_channels):
-        tmp_idx = np.where(principal_channels==c)[0]
+        ch_idx = np.where(visible_channels[k])[0]
+        times = (spt[:, np.newaxis] + np.arange(
+                -R-n_explore, n_explore+R+1))
+        wf = (((recordings.ravel()[(
+           ch_idx + (times * recordings.shape[1]).reshape((-1,1))
+           ).ravel()]).reshape(times.size, ch_idx.size)).reshape((spt.shape[0], -1, ch_idx.shape[0])))
 
-        if tmp_idx.shape[0] > 0:
-
-            spt = spt_list[c]
-            spt = spt[np.logical_and(spt >= data_start,
-                                     spt < data_end)]
-            spt = spt - data_start + offset
-
-            wf = recordings[
-                spt[:, np.newaxis] + np.arange(
-                    -R-n_explore, n_explore+R+1)]
-
-            spatial_dot = np.matmul(spatial_features[tmp_idx][np.newaxis, np.newaxis],
-                                    wf[:, :, np.newaxis, np.newaxis,:,
-                                       np.newaxis]
-                                   ).transpose(0, 2, 3, 1, 4, 5)[:, :, :, :, :, 0]
-
-            dot = np.zeros((spt.shape[0], 2*n_explore+1, tmp_idx.shape[0], n_shifts))
-            for j in range(2*n_explore+1):
-                dot[:, j, :] = np.sum(spatial_dot[
-                    :, :, :, j:j+2*R+1]*temporal_features[tmp_idx][np.newaxis], (3, 4))
-
-            for j, k in enumerate(tmp_idx):
-                d_matrix[spt[:, np.newaxis] + np.arange(
-                    -n_explore,n_explore+1), k] = 2*dot[:, :, j]  - \
-                norms[k][np.newaxis, np.newaxis]
+        spatial_dot = np.matmul(spatial_features[k][np.newaxis, np.newaxis, :, :, ch_idx],
+                                wf[:, :, np.newaxis, :, np.newaxis]
+                               )[:,:,:,:,0].transpose(0, 2, 1, 3)
+        
+        dot = np.zeros((spt.shape[0], 2*n_explore+1, n_shifts))
+        for j in range(2*n_explore+1):
+            dot[:, j] = np.sum(spatial_dot[
+                :, :, j:j+2*R+1]*temporal_features[k][np.newaxis], (2, 3))
+        
+        d_matrix[spt[:, np.newaxis] + np.arange(-n_explore,n_explore+1), k] = 2*dot  - \
+            norms[k][np.newaxis, np.newaxis]
+        
 
     spike_train = np.zeros((0, 2), 'int32')
     max_d = np.max(d_matrix, (1,2))
