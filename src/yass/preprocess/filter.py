@@ -136,11 +136,11 @@ def _butterworth(ts, low_frequency, high_factor, order, sampling_frequency):
         high = float(high_factor) * 2
         b, a = butter(order, [low, high], btype='band')
 
-        output = np.zeros((T, C), 'float32')
-        for c in range(C):
-            output[:, c] = lfilter(b, a, ts[:, c])
+        #output = np.zeros((T, C), 'float32')
+        #for c in range(C):
+        #    output[:, c] = lfilter(b, a, ts[:, c])
 
-        return output
+        return lfilter(b, a, ts, 0)
 
 def fix_indexes(res, idx_local, idx, buffer_size):
     """Fixes indexes from detected spikes in batches

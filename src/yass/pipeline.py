@@ -130,13 +130,25 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
         np.save(path_to_clear_spike_train_after_merge, spike_train_clear)
 
     # run deconvolution
-    spike_train, templates = deconvolute.run(spike_index_all, templates,
-                                             output_directory=output_dir)
+    spike_train, templates, unit_match = deconvolute.run(spike_index_all, templates,
+                                                         output_directory=output_dir)
 
     # save templates
     path_to_templates = path.join(TMP_FOLDER, 'templates.npy')
     logging.info('Saving templates in {}'.format(path_to_templates))
     np.save(path_to_templates, templates)
+    
+    # spike_train_clear after deconv
+    path_to_clear_spike_train_after_deconv = path.join(TMP_FOLDER, 'spike_train_clear_after_deconv.npy')
+    spike_train_clear_clean = np.zeros((0, 2), 'int32')
+    for j, k in enumerate(unit_match):
+        spike_train_temp = np.copy(spike_train_clear[spike_train_clear[:, 1] == k])
+        spike_train_temp[:, 1] = j
+        spike_train_clear_clean = np.vstack((spike_train_clear_clean,
+                                       spike_train_temp))
+    idx_sort = np.argsort(spike_train_clear_clean[:, 0])
+    spike_train_clear_clean = spike_train_clear_clean[idx_sort]
+    np.save(path_to_clear_spike_train_after_deconv, spike_train_clear_clean)
     
     # save metadata in tmp
     path_to_metadata = path.join(TMP_FOLDER, 'metadata.yaml')

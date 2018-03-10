@@ -22,7 +22,7 @@ def clean_up(spike_train, templates, max_spikes):
         
     idx_sort = np.argsort(spike_train_clean[:, 0])
     
-    return spike_train_clean[idx_sort], templates_clean
+    return spike_train_clean[idx_sort], templates_clean, Ks
         
     
     
