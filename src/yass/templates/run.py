@@ -4,7 +4,7 @@ import datetime
 
 from yass import read_config
 from yass.templates.util import get_and_merge_templates as gam_templates
-
+from yass.templates.clean import clean_up_templates
 
 def run(spike_train, output_directory='tmp/',
         recordings_filename='standarized.bin'):
@@ -56,6 +56,16 @@ def run(spike_train, output_directory='tmp/',
         CONFIG.spikeSize, CONFIG.templatesMaxShift,
         merge_threshold, CONFIG.neighChannels)
 
+    snr_threshold = 2
+    duplicate_threshold = 0.9
+    spread_threshold = 70
+    (spike_train,
+     templates,
+     spread_template) = clean_up_templates(spike_train, templates,
+                                           CONFIG.geom, snr_threshold,
+                                           duplicate_threshold,
+                                           spread_threshold)
+
     Time['e'] += (datetime.datetime.now() - _b).total_seconds()
 
     # report timing
@@ -63,4 +73,4 @@ def run(spike_train, output_directory='tmp/',
     logger.info("Templates done in {0} seconds.".format(
         (currentTime - startTime).seconds))
 
-    return templates, spike_train
+    return templates, spike_train, spread_template

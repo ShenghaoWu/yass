@@ -124,14 +124,14 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
         templates = np.load(path_to_templates)
         spike_train_clear = np.load(path_to_clear_spike_train_after_merge)
     else:
-        templates, spike_train_clear = get_templates.run(spike_train_clear)   
+        templates, spike_train_clear, _ = get_templates.run(spike_train_clear)
         logging.info('Saving templates in {}'.format(path_to_templates))
         np.save(path_to_templates, templates)
         np.save(path_to_clear_spike_train_after_merge, spike_train_clear)
 
     # run deconvolution
-    spike_train, templates, unit_match = deconvolute.run(spike_index_all, templates,
-                                                         output_directory=output_dir)
+    spike_train, templates = deconvolute.run(spike_index_all, templates,
+                                             output_directory=output_dir)
 
     # save templates
     path_to_templates = path.join(TMP_FOLDER, 'templates.npy')

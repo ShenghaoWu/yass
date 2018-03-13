@@ -10,6 +10,7 @@ from yass.cluster.triage import triage
 from yass.cluster.coreset import coreset
 from yass.cluster.mask import getmask
 from yass.cluster.util import run_cluster, run_cluster_location
+from yass.cluster.merge import merge_units
 
 
 def run(scores, spike_index):
@@ -50,12 +51,6 @@ def run(scores, spike_index):
                                     CONFIG.recordings.n_channels)
 
     if CONFIG.clustering.clustering_method == 'location':
-
-        ###############
-        # standardize #
-        ###############
-
-        scores = standardize(scores)
 
         ##########
         # Triage #

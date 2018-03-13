@@ -315,9 +315,6 @@ def get_locations_features(scores, rotation, main_channel,
                                 channel_geometry.shape[1],
                                 scores.shape[1]))
 
-    scores = np.divide((scores - np.mean(scores, axis=0, keepdims=True)),
-                       np.std(scores, axis=0, keepdims=True))
-
     return scores[:, :, np.newaxis]
 
 
@@ -347,8 +344,5 @@ def get_locations_features_threshold(scores, main_channel,
                          .format(n_features,
                                  channel_geometry.shape[1],
                                  scores.shape[1]))
-
-    scores = np.divide((scores - np.mean(scores, axis=0, keepdims=True)),
-                       np.std(scores, axis=0, keepdims=True))
 
     return scores[:, :, np.newaxis]

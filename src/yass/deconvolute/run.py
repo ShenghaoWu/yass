@@ -110,6 +110,6 @@ def run(spike_index, templates,
                  .format(spike_train.shape))
 
     # sort spikes by time
-    spike_train, templates, unit_match = clean_up(spike_train, templates, max_spikes)
+    spike_train, templates = clean_up(spike_train, templates, max_spikes)
 
-    return spike_train, np.transpose(templates), unit_match
+    return spike_train, np.transpose(templates)

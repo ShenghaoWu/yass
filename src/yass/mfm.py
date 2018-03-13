@@ -850,20 +850,24 @@ def merge_move(maskedData, vbParam, suffStat, param, L, check_full):
         all_checked = 1
 
     while (not all_checked) and (K > 1):
-        m = np.transpose(vbParam.muhat, [1, 0, 2]).reshape(
-            [K, nfeature * nchannel], order="F")
-        kdist = ss.distance_matrix(m, m)
-        kdist[np.tril_indices(K)] = np.inf
+        prec = np.transpose(
+            vbParam.Vhat * vbParam.nuhat[np.newaxis, np.newaxis, :, np.newaxis],
+            axes=[2, 3, 0, 1])
+        diff_mhat = (vbParam.muhat[:, np.newaxis] - vbParam.muhat[:, :, np.newaxis]).transpose(1,2,3,0)
+        maha = np.sum(np.matmul(np.matmul(diff_mhat[:,:,:, np.newaxis, :], prec),
+                                diff_mhat[:,:,:,:, np.newaxis]),(2,3,4))
+        maha[np.arange(K), np.arange(K)] = np.Inf
         merged = 0
         k_untested = np.ones(K)
         while np.sum(k_untested) > 0 and merged == 0:
             untested_k = np.argwhere(k_untested)
             ka = untested_k[np.random.choice(len(untested_k), 1)].ravel()[0]
-            kb = np.argmin(kdist[ka, :]).ravel()[0]
+            kb = np.argmin(maha[ka, :]).ravel()[0]
             k_untested[ka] = 0
-            if np.argmin(kdist[kb, :]).ravel()[0] == ka:
+            maha[ka, kb] = np.inf
+            if np.argmin(maha[kb, :]).ravel()[0] == ka:
                 k_untested[kb] = 0
-            kdist[min(ka, kb), max(ka, kb)] = np.inf
+                maha[kb, ka] = np.inf
 
             vbParam, suffStat, merged, L, ELBO = check_merge(
                 maskedData, vbParam, suffStat, ka, kb, param, L, ELBO)
@@ -951,12 +955,9 @@ def check_merge(maskedData, vbParam, suffStat, ka, kb, param, L, ELBO):
 
 
 def spikesort(score, mask, group, param):
-    usedchan = np.asarray(np.where(np.sum(mask, axis=0) >= 1)).ravel()
-    score = score[:, :, usedchan]
-    mask = mask[:, usedchan]
-    # FIXME: seems like this is never used
-    # param.n_chan = np.sum(usedchan)
 
+    score = np.divide((score - np.mean(score, axis=0, keepdims=True)),
+                      np.std(score, axis=0, keepdims=True))
     maskedData = maskData(score, mask, group)
 
     vbParam = split_merge(maskedData, param)
@@ -967,7 +968,7 @@ def spikesort(score, mask, group, param):
     for j in range(score.shape[0]):
         assignment[j] = assignmentTemp[group[j]]
 
-    idx_triage = cluster_triage(vbParam, score, 2)
+    idx_triage = cluster_triage(vbParam, score, 3)
     assignment[idx_triage] = -1
 
     return assignment

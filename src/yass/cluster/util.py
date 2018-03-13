@@ -2,6 +2,7 @@ import numpy as np
 import logging
 
 from yass.mfm import spikesort
+from yass.cluster.merge import merge_units
 
 
 def run_cluster(scores, masks, groups, spike_times,
@@ -162,6 +163,7 @@ def run_cluster_location(scores, spike_times, CONFIG):
     n_channels = len(scores)
     global_spike_time = np.zeros(0).astype('uint16')
     global_cluster_id = np.zeros(0).astype('uint16')
+    global_scores = None
 
     # run clustering algorithm per main channel
     for channel in range(n_channels):
@@ -176,7 +178,6 @@ def run_cluster_location(scores, spike_times, CONFIG):
 
             # make a fake mask of ones to run clustering algorithm
             mask = np.ones((n_data, 1))
-            #group = groups[channel]
             group = np.arange(n_data)
             cluster_id = spikesort(score, mask,
                                    group, CONFIG)
@@ -195,10 +196,17 @@ def run_cluster_location(scores, spike_times, CONFIG):
                                                       global_spike_time,
                                                       global_cluster_id)
 
+            if global_scores is None:
+                global_scores = score[~idx_triage][:, :, 0]
+            else:
+                global_scores = np.concatenate((global_scores, score[~idx_triage][:, :, 0]), 0)
+
     # make spike train
     spike_train = np.hstack(
         (global_spike_time[:, np.newaxis],
          global_cluster_id[:, np.newaxis]))
+
+    spike_train = merge_units(global_scores, spike_train, 3*global_scores.shape[1])
 
     # sort based on spike_time
     idx_sort = np.argsort(spike_train[:, 0])
