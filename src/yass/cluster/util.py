@@ -206,7 +206,7 @@ def run_cluster_location(scores, spike_times, CONFIG):
         (global_spike_time[:, np.newaxis],
          global_cluster_id[:, np.newaxis]))
 
-    spike_train = merge_units(global_scores, spike_train, 3*global_scores.shape[1])
+    spike_train = merge_units(global_scores, spike_train, 2*global_scores.shape[1])
 
     # sort based on spike_time
     idx_sort = np.argsort(spike_train[:, 0])
