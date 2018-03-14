@@ -176,6 +176,7 @@ def run_cluster_location(scores, spike_times, CONFIG):
 
             # make a fake mask of ones to run clustering algorithm
             mask = np.ones((n_data, 1))
+            #group = groups[channel]
             group = np.arange(n_data)
             cluster_id = spikesort(score, mask,
                                    group, CONFIG)
@@ -184,6 +185,8 @@ def run_cluster_location(scores, spike_times, CONFIG):
 
             cluster_id = cluster_id[~idx_triage]
             spike_time = spike_time[~idx_triage]
+            if np.sum(idx_triage) != n_data:
+                cluster_id = clean_empty_cluster(cluster_id)
 
             # gather clustering information into global variable
             (global_spike_time,
@@ -261,3 +264,17 @@ def global_cluster_info(spike_time, cluster_id,
         cluster_id + cluster_id_max + 1])
 
     return (global_spike_time, global_cluster_id)
+
+
+def clean_empty_cluster(cluster_id):
+    Ks = np.unique(cluster_id)
+
+    if Ks.shape[0] == np.max(Ks)+1:
+        return cluster_id
+
+    else:
+        cluster_id_new = np.zeros(cluster_id.shape[0], 'int16')
+        for j,k in enumerate(Ks):
+            cluster_id_new[cluster_id==k] = j
+
+        return cluster_id_new

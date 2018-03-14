@@ -4,6 +4,7 @@ import datetime
 from yass import read_config
 from yass.geometry import make_channel_index
 from yass.cluster.list import make_list
+from yass.cluster.standardize import standardize
 from yass.cluster.subsample import random_subsample
 from yass.cluster.triage import triage
 from yass.cluster.coreset import coreset
@@ -48,22 +49,39 @@ def run(scores, spike_index):
     scores, spike_index = make_list(scores, spike_index,
                                     CONFIG.recordings.n_channels)
 
-    ##########
-    # Triage #
-    ##########
-
-    _b = datetime.datetime.now()
-    logger.info("Triaging...")
-    score, spike_index = triage(scores, spike_index,
-                                CONFIG.triage.nearest_neighbors,
-                                CONFIG.triage.percent)
-
-    logger.info("Randomly subsampling...")
-    scores, spike_index = random_subsample(scores, spike_index,
-                                           CONFIG.clustering.max_n_spikes)
-    Time['t'] += (datetime.datetime.now()-_b).total_seconds()
-
     if CONFIG.clustering.clustering_method == 'location':
+
+        ###############
+        # standardize #
+        ###############
+
+        scores = standardize(scores)
+
+        ##########
+        # Triage #
+        ##########
+
+        _b = datetime.datetime.now()
+        logger.info("Triaging...")
+        scores, spike_index = triage(scores, spike_index,
+                                    CONFIG.triage.nearest_neighbors,
+                                    CONFIG.triage.percent)
+
+        logger.info("Randomly subsampling...")
+        scores, spike_index = random_subsample(scores, spike_index,
+                                               CONFIG.clustering.max_n_spikes)
+        Time['t'] += (datetime.datetime.now()-_b).total_seconds()
+
+        ###########
+        # Coreset #
+        ###########
+        #_b = datetime.datetime.now()
+        #logger.info("Coresetting...")
+        #groups = coreset(scores,
+        #                 CONFIG.coreset.clusters,
+        #                 CONFIG.coreset.threshold)
+        #Time['c'] += (datetime.datetime.now() - _b).total_seconds()
+
         ##############
         # Clustering #
         ##############
@@ -74,6 +92,22 @@ def run(scores, spike_index):
         Time['s'] += (datetime.datetime.now()-_b).total_seconds()
 
     else:
+
+        ##########
+        # Triage #
+        ##########
+
+        _b = datetime.datetime.now()
+        logger.info("Triaging...")
+        scores, spike_index = triage(scores, spike_index,
+                                    CONFIG.triage.nearest_neighbors,
+                                    CONFIG.triage.percent)
+
+        logger.info("Randomly subsampling...")
+        scores, spike_index = random_subsample(scores, spike_index,
+                                               CONFIG.clustering.max_n_spikes)
+        Time['t'] += (datetime.datetime.now()-_b).total_seconds()
+
         ###########
         # Coreset #
         ###########

@@ -131,7 +131,7 @@ class NeuralNetDetector(object):
         o_layer = tf.transpose(temp2, [2, 1, 0, 3])
 
         # temporal max
-        temporal_max = max_pool(o_layer, [1, 3, 1, 1]) - 1e-8
+        temporal_max = max_pool(o_layer, [1, 5, 1, 1]) - 1e-8
 
         # spike index is local maximum crossing a threshold
         spike_index_tf = tf.cast(tf.where(

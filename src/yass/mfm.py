@@ -817,28 +817,24 @@ def birth_move(maskedData, vbParam, suffStat, param, L):
         suffStatPrime = suffStatistics(maskedDataPrime, vbParamPrime)
         vbParamPrime.update_global(suffStatPrime, param)
 
-    temp = vbParamPrime.rhat * maskedDataPrime.weight[:, np.newaxis]
-    goodK = ((np.sum(temp, axis=0) / np.sum(maskedDataPrime.weight)) >
-             (1.0 / (extraK * 2)))
-    Nbirth = np.sum(goodK)
-    if Nbirth >= 1:
-        vbParam.ahat = np.concatenate(
-            (vbParam.ahat, vbParamPrime.ahat[goodK]), axis=0)
-        vbParam.lambdahat = np.concatenate(
-            (vbParam.lambdahat, vbParamPrime.lambdahat[goodK]), axis=0)
-        vbParam.muhat = np.concatenate(
-            (vbParam.muhat, vbParamPrime.muhat[:, goodK, :]), axis=1)
-        vbParam.Vhat = np.concatenate(
-            (vbParam.Vhat, vbParamPrime.Vhat[:, :, goodK, :]), axis=2)
-        vbParam.invVhat = np.concatenate(
-            (vbParam.invVhat, vbParamPrime.invVhat[:, :, goodK, :]), axis=2)
-        vbParam.nuhat = np.concatenate(
-            (vbParam.nuhat, vbParamPrime.nuhat[goodK]), axis=0)
-        L = np.concatenate((L, np.ones(Nbirth)), axis=0)
+    vbParam.ahat = np.concatenate(
+        (vbParam.ahat, vbParamPrime.ahat), axis=0)
+    vbParam.lambdahat = np.concatenate(
+        (vbParam.lambdahat, vbParamPrime.lambdahat), axis=0)
+    vbParam.muhat = np.concatenate(
+        (vbParam.muhat, vbParamPrime.muhat), axis=1)
+    vbParam.Vhat = np.concatenate(
+        (vbParam.Vhat, vbParamPrime.Vhat), axis=2)
+    vbParam.invVhat = np.concatenate(
+        (vbParam.invVhat, vbParamPrime.invVhat), axis=2)
+    vbParam.nuhat = np.concatenate(
+        (vbParam.nuhat, vbParamPrime.nuhat), axis=0)
 
     vbParam.update_local(maskedData)
     suffStat = suffStatistics(maskedData, vbParam)
     vbParam.update_global(suffStat, param)
+    nbrith = vbParamPrime.rhat.shape[1]
+    L = np.concatenate((L, np.ones(nbrith)), axis=0)
 
     return vbParam, suffStat, L
 
@@ -847,6 +843,7 @@ def merge_move(maskedData, vbParam, suffStat, param, L, check_full):
     n_merged = 0
     ELBO = ELBO_Class(maskedData, suffStat, vbParam, param)
     nfeature, K, nchannel = vbParam.muhat.shape
+        
     if K > 1:
         all_checked = 0
     else:
@@ -875,6 +872,7 @@ def merge_move(maskedData, vbParam, suffStat, param, L, check_full):
                 K -= 1
         if not merged:
             all_checked = 1
+
     return vbParam, suffStat, L
 
 
@@ -969,7 +967,7 @@ def spikesort(score, mask, group, param):
     for j in range(score.shape[0]):
         assignment[j] = assignmentTemp[group[j]]
 
-    idx_triage = cluster_triage(vbParam, score, 3)
+    idx_triage = cluster_triage(vbParam, score, 2)
     assignment[idx_triage] = -1
 
     return assignment
@@ -979,7 +977,7 @@ def split_merge(maskedData, param):
     vbParam, suffStat = init_param(maskedData, 1, param)
     iter = 0
     L = np.ones([1])
-    n_iter = 1
+    n_iter = 10
     extra_iter = 5
     k_max = 1
     while iter < n_iter:

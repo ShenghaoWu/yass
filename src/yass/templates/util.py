@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO: remove this function and use the explorer directly
-def get_templates(spike_train, path_to_recordings, spike_size):
+def get_templates(spike_train, path_to_recordings, max_memory, spike_size):
     logger.info('Computing templates...')
 
     # number of templates
@@ -19,6 +19,7 @@ def get_templates(spike_train, path_to_recordings, spike_size):
 
     # read recording
     bp = BatchProcessor(path_to_recordings,
+                        max_memory=max_memory,
                         buffer_size=spike_size)
 
     # run nn preprocess batch-wsie
@@ -78,10 +79,11 @@ def compute_weighted_templates(recording, idx_local, idx, previous_batch,
 
 
 # TODO: docs
-def get_and_merge_templates(spike_train_clear, path_to_recordings,
+def get_and_merge_templates(spike_train_clear, path_to_recordings, max_memory,
                             spike_size, template_max_shift, t_merge_th,
                             neighbors):
     templates, weights = get_templates(spike_train_clear, path_to_recordings,
+                                       max_memory,
                                        2*(spike_size + template_max_shift))
 
     templates = align_templates(templates, template_max_shift)

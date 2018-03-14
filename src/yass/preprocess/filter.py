@@ -142,7 +142,6 @@ def _butterworth(ts, low_frequency, high_factor, order, sampling_frequency):
 
         return output
 
-
 def fix_indexes(res, idx_local, idx, buffer_size):
     """Fixes indexes from detected spikes in batches
 
@@ -162,4 +161,4 @@ def fix_indexes(res, idx_local, idx, buffer_size):
     data_start = idx_local[0].start
     data_end = idx_local[0].stop
 
-    return res[data_start:data_end]
+    return res[data_start:data_end]    

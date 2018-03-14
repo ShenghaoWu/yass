@@ -108,15 +108,38 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
                                    output_directory=output_dir)
 
     # cluster
-    spike_train_clear = cluster.run(score, spike_index_clear)
+    path_to_spike_train_clear = path.join(TMP_FOLDER, 'spike_train_clear.npy')
+    if os.path.exists(path_to_spike_train_clear):
+        spike_train_clear = np.load(path_to_spike_train_clear)
+
+    else:
+        spike_train_clear = cluster.run(score, spike_index_clear)
+        logging.info('Saving clear spike train in {}'.format(path_to_spike_train_clear))
+        np.save(path_to_spike_train_clear, spike_train_clear)
 
     # get templates
-    templates = get_templates.run(spike_train_clear)
+    path_to_templates = path.join(TMP_FOLDER, 'templates.npy')
+    path_to_clear_spike_train_after_merge = path.join(TMP_FOLDER, 'spike_train_clear_after_merge.npy')
+    if os.path.exists(path_to_clear_spike_train_after_merge):
+        templates = np.load(path_to_templates)
+        spike_train_clear = np.load(path_to_clear_spike_train_after_merge)
+    else:
+        templates, spike_train_clear = get_templates.run(spike_train_clear)   
+        logging.info('Saving templates in {}'.format(path_to_templates))
+        np.save(path_to_templates, templates)
+        np.save(path_to_clear_spike_train_after_merge, spike_train_clear)
 
+
+    print (templates.shape, spike_train_clear.shape)
     # run deconvolution
-    spike_train = deconvolute.run(spike_index_all, templates,
-                                  output_directory=output_dir)
+    spike_train, templates = deconvolute.run(spike_index_all, templates,
+                                             output_directory=output_dir)
 
+    # save templates
+    path_to_templates = path.join(TMP_FOLDER, 'templates.npy')
+    logging.info('Saving templates in {}'.format(path_to_templates))
+    np.save(path_to_templates, templates)
+    
     # save metadata in tmp
     path_to_metadata = path.join(TMP_FOLDER, 'metadata.yaml')
     logging.info('Saving metadata in {}'.format(path_to_metadata))
@@ -133,11 +156,6 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
 
     logging.info('Saving copy of config: {} in {}'.format(config,
                                                           path_to_config_copy))
-
-    # save templates
-    path_to_templates = path.join(TMP_FOLDER, 'templates.npy')
-    logging.info('Saving templates in {}'.format(path_to_templates))
-    np.save(path_to_templates, templates)
 
     path_to_spike_train = path.join(TMP_FOLDER, 'spike_train.npy')
     np.save(path_to_spike_train, spike_train)

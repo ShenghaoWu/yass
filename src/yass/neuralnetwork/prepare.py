@@ -179,7 +179,7 @@ def remove_uncetered(score_tf, waveform_tf, spike_index_tf):
     # calculate energy for each spike for each data
     energy_tf = tf.reduce_sum(tf.square(score_tf), 1)
     # it is centered if the energy is highest at the first channel index
-    idx_centered = tf.equal(tf.argmax(energy_tf, 1), 0)
+    idx_centered = energy_tf[:, 0] > 0.7*tf.reduce_max(energy_tf, 1)
 
     # keep oinly good ones
     wf_keep_tf = tf.boolean_mask(waveform_tf, idx_centered)

@@ -59,6 +59,8 @@ class RecordingsReader(object):
     def __init__(self, path_to_recordings, dtype=None, n_channels=None,
                  data_format=None, loader='memmap'):
 
+	#print (path_to_recordings)
+	#path_to_recordings = '/media/cat/6788503b-cb27-41da-8034-cae4d7dda5cd/liam/ella/2017-12-04-5/data001_data003/tmp/filtered.bin'
         path_to_yaml = path_to_recordings.replace('.bin', '.yaml')
 
         if (not os.path.isfile(path_to_yaml) and (dtype is None or
@@ -73,9 +75,9 @@ class RecordingsReader(object):
             with open(path_to_yaml) as f:
                 params = yaml.load(f)
 
-            dtype = params['dtype']
-            n_channels = params['n_channels']
-            data_format = params['data_format']
+            n_channels = params['recordings']['n_channels']
+            data_format = params['recordings']['format']
+            dtype = params['recordings']['dtype']
 
         self._data_format = data_format
         self._n_channels = n_channels
