@@ -249,7 +249,7 @@ def deconvolve_new_allcores(data_in, filename_bin, filename_spt_list, filename_t
     idx_list, chunk_idx = data_in[0], data_in[1]
     #print idx_list, proc_idx
 
-    start_time = time.time()
+    chunk_time = time.time()
     spt_list = np.load(filename_spt_list)
     temp_temp = np.load(filename_temp_temp)
     shifted_templates = np.load(filename_shifted_templates)
@@ -271,7 +271,7 @@ def deconvolve_new_allcores(data_in, filename_bin, filename_spt_list, filename_t
     #chunk_idx = 0
     #for data_start, data_end, offset in zip(data_start_array,data_end_array,offset_array):
     #************************* LOAD RECORDINGS  **************************
-    print (data_start, data_end, offset)
+    #print (data_start, data_end, offset)
     print ("Chunk: ", chunk_idx, "  Loading : ", ((data_end-data_start)*4*n_channels)*1.E-6, "MB")
     with open(filename_bin, "rb") as fin:
 	if data_start==0:
@@ -323,7 +323,6 @@ def deconvolve_new_allcores(data_in, filename_bin, filename_spt_list, filename_t
     #************************************************************************************************************
     #Dot products between waveforms and tempaltes
     #print ("Processor: ", proc_idx, "chunk: ", chunk_idx, " in dot product loop ...") 
-    print ("Chunk: ", chunk_idx, "  in dot product loop...")
     
     
     #print (n_templates)					# 96
@@ -339,6 +338,7 @@ def deconvolve_new_allcores(data_in, filename_bin, filename_spt_list, filename_t
     #dot_product = time.time()
     ctr_times=0				#Marker to ensure some spikes are present in the specific time chunk
     #n_templates = int(n_templates/2)
+    #print ("Chunk: ", chunk_idx, "  in dot product loop ...")
     for k in range(n_templates):
 	start_time = time.time()
 	#Select spikes on the max channel of the template picked and offset to t=0 + buffer
@@ -410,12 +410,14 @@ def deconvolve_new_allcores(data_in, filename_bin, filename_spt_list, filename_t
     print ("Chunk: ", chunk_idx, " in thresholding loop ...")
 
     spike_train = np.zeros((0, 2), 'int32')
-    #threshold_time = time.time()
     max_d = np.max(d_matrix, (1,2))
     max_val = np.max(max_d)
+    threshold_time = time.time()
+    thresh_ctr = 0
     while max_val > threshold_d:	
 	# find spike time; get spike time from objective function; and which template it is
-	#start_time = time.time()
+	#print max_val
+	#check_pt1 = time.time()
 	peaks = argrelmax(max_d)[0]
 	idx_good = peaks[np.argmax(
 	    max_d[peaks[:, np.newaxis] + np.arange(-2*R,2*R+1)],1) == (2*R)]
@@ -424,48 +426,88 @@ def deconvolve_new_allcores(data_in, filename_bin, filename_spt_list, filename_t
 	    np.argmax(np.reshape(d_matrix[spike_time],
 				 (spike_time.shape[0], -1)),1),
 	    [n_templates, n_shifts])
-	#print "1 ", time.time()-start_time
+	#print "1 ", time.time()-check_pt1
 
-	# prevent refractory period violation
+	## prevent refractory period violation
 	#start_time = time.time()
+	#check_pt2=time.time()
 	rf_area = spike_time[:, np.newaxis] + np.arange(-R,R+1)
 	rf_area_t = np.tile(template_id[:,np.newaxis],(1, 2*R+1))
 	d_matrix[rf_area, rf_area_t] = -np.Inf
-	rf_area = np.reshape(rf_area, -1)
-
-	#start_time1=time.time()
-	max_d[rf_area] = np.max(d_matrix[rf_area], (1,2))
-	#print time.time()-start_time1
-	#print "2 ", time.time()-start_time
+	#print "2 ", time.time()-check_pt2
 	
-	# update nearby times
+	#*****************************************************
+	#****************BOTTLENECK #1************************
+	#*****************************************************
+	#rf_area = np.reshape(rf_area, -1)
+	#check_pt1=time.time()
+	#max_d[rf_area] = np.max(d_matrix[rf_area], (1,2))
+	#check_pt1 = time.time() - check_pt1
+	#print "  ", check_pt1
+
+	#*****************************************************
+	#*****************************************************
+	#*****************************************************
+
+	#print "2 ", time.time()-start_time
+	## update nearby times
 	#start_time = time.time()
-	time_affected = np.zeros(max_d.shape[0], 'bool')
-	for j in range(spike_time.shape[0]):					#Looping over number of spikes with batch chunk
-	    t_neigh, k_neigh = np.where(					#most expensive step						#WHY IS THERE A COMPARISON WITH -INF? IS THIS EXPENSIVE?
+	#time_affected = np.zeros(max_d.shape[0], 'bool')
+
+	# update nearby times
+	#check_pt3=time.time()
+	for j in range(spike_time.shape[0]):
+	    t_neigh, k_neigh = np.where(
 		d_matrix[spike_time[j]-2*R:spike_time[j]+2*R, :, 0] > -np.Inf)
 	    t_neigh_abs = spike_time[j] + t_neigh - 2*R
-	    d_matrix[t_neigh_abs, k_neigh] -= temp_temp[			#d_matrix subtracting temp_temp, predefined deconvolution subtraction
+	    d_matrix[t_neigh_abs, k_neigh] -= temp_temp[
 		template_id[j], k_neigh, max_shift[j], :, t_neigh]
-	    time_affected[t_neigh_abs] = 1
+	#print "3 ", time.time()-check_pt3
+
+	#for j in range(spike_time.shape[0]):					#Looping over number of spikes with batch chunk
+	    #t_neigh, k_neigh = np.where(					#most expensive step						#WHY IS THERE A COMPARISON WITH -INF? IS THIS EXPENSIVE?
+		#d_matrix[spike_time[j]-2*R:spike_time[j]+2*R, :, 0] > -np.Inf)
+	    #t_neigh_abs = spike_time[j] + t_neigh - 2*R
+	    #d_matrix[t_neigh_abs, k_neigh] -= temp_temp[			#d_matrix subtracting temp_temp, predefined deconvolution subtraction
+		#template_id[j], k_neigh, max_shift[j], :, t_neigh]
+	    #time_affected[t_neigh_abs] = 1
 	#print "3 ", time.time()-start_time
 	
 	#start_time=time.time()
-	
-	#start_time1=time.time()
+
+	#*****************************************************
+	#****************BOTTLENECK #2************************
+	#*****************************************************
+	#check_pt4=time.time()
+	time_affected = np.reshape(spike_time[:, np.newaxis] + np.arange(-2*R,2*R+1), -1)
+	time_affected = time_affected[max_d[time_affected] > -np.Inf]
 	max_d[time_affected] = np.max(d_matrix[time_affected], (1,2))
-	#print time.time()-start_time1
+	#print "4 ", time.time()-check_pt4
+
+	#max_d[time_affected] = max_function(d_matrix[time_affected])
+
+	#max_d[time_affected] = max_function(d_matrix[time_affected])		#OLD ONE
+	#check_pt2 = time.time()-check_pt2
+	#print "  ", check_pt2
+	#*****************************************************
+	#*****************************************************
+	#*****************************************************
 	
 	#start_time1=time.time()
+	#check_pt5=time.time()
 	max_val = np.max(max_d)
-	#print time.time()-start_time1
+	#print "  ", time.time()-start_time1
 	
 	spike_train_temp = np.hstack((spike_time[:, np.newaxis],
 				      template_id[:, np.newaxis]))
 	spike_train = np.concatenate((spike_train, spike_train_temp), 0)         
 	#print "4 ", time.time()-start_time, "\n\n\n"
+	#print "5 ", time.time()-check_pt5, '\n\n\n\n'
 
-
+	#print "total threshold loop time: ", time.time()-threshold_time, " % in dmax: ", int((check_pt2)/(time.time()-threshold_time)*100)
+    
+	thresh_ctr+=1
+    
     #Fix indexes
     spike_times = spike_train[:, 0]
     # get only observations outside the buffer
@@ -475,13 +517,13 @@ def deconvolve_new_allcores(data_in, filename_bin, filename_spt_list, filename_t
     train_not_in_buffer[:, 0] = (train_not_in_buffer[:, 0] + data_start
 				 - buffer_size)
 
-    print ("Chunk: ", chunk_idx, "cleaned spikes: ", len(train_not_in_buffer), " time: ", time.time() - start_time)
+    print ("Chunk: ", chunk_idx, "cleaned spikes: ", len(train_not_in_buffer), " chunk time: ", int(time.time() - chunk_time), " thershold time: ", int(time.time() - threshold_time), " thresh_ctr: ", thresh_ctr)
 
     #.append(train_not_in_buffer)
     #chunk_idx+=1
 
     return train_not_in_buffer
-    
+
     
 #********************************************************************************************************************************************
 #********************************************************************************************************************************************

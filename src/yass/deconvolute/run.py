@@ -108,9 +108,9 @@ def run(spike_index, templates,
 	#Parallel temp_temp computation
 	if True: 
 	    n_processors = CONFIG.resources.n_processors
-	    n_chunks = n_processors
+	    #n_chunks = n_processors
 	    indexes = np.arange(temporal_features.shape[0])
-	    template_list = np.array_split(indexes,n_chunks)
+	    template_list = np.array_split(indexes,n_processors)
 
 	    temp_temp_array = parmap.map(calculate_temp_temp_parallel, template_list, temporal_features,spatial_features, processes=n_processors)
 	    np.save(path_to_temp_temp, np.concatenate((temp_temp_array),axis=1)*2)
@@ -171,21 +171,27 @@ def run(spike_index, templates,
 	threshold_d = CONFIG.deconvolution.threshold_dd
 	n_processors = CONFIG.resources.n_processors
 	n_channels = CONFIG.recordings.n_channels  
+	n_parallel_chunks = CONFIG.resources.n_parallel_chunks
 
 	buffer_size=2*n_temporal_big+n_explore
 
-	n_chunks = 300
-	indexes = np.linspace(0,fp_len, n_processors*n_chunks+1)/n_channels
+	#n_parallel_chunks = 600
+	indexes = np.linspace(0,fp_len, n_processors*n_parallel_chunks+1)/n_channels
+	#indexes = np.arange(0,fp_len, 20000)
 	#print indexes
 
 	idx_list = []
 	for k in range(len(indexes)-1):
 	    idx_list.append([indexes[k],indexes[k+1],buffer_size, indexes[k+1]-indexes[k]+buffer_size])
-
+	#idx_list.append([indexes[k+1],fp_len,buffer_size, fp_len-indexes[k+1]+buffer_size])
+	
 	idx_list = np.int32(np.vstack(idx_list))
 	print idx_list	
 
-	print ("# of chunks: ", len(idx_list), " # cores: ", n_processors)
+	if n_processors==0:
+	    print ("# of chunks: ", len(idx_list), " # cores: ", 1)
+	else:
+	    print ("# of chunks: ", len(idx_list), " # cores: ", n_processors)
 	
 	#************************************************************************************************************
 	#************************************************************************************************************
