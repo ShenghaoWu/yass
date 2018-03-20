@@ -13,23 +13,19 @@ def merge_units(score, spike_train_clear, threshold):
 
             for k in range(n_clusters):
                 score_temp = score[spike_train_clear[:,1]==k]
+                unit_mean[k] = np.mean(score_temp, 0)
                 if score_temp.shape[0] > 1:
-                    unit_mean[k] = np.mean(score_temp, 0)
                     unit_cov = np.cov(score_temp.T)
                 else:
                     unit_cov = np.eye(score.shape[1])
-                    
-                try:
-                    prec[k] = linalg.inv(unit_cov)
-                except LinAlgErr as err:
-                    prec[k] = linalg.inv(unit_cov + np.eye(scores.shape[1])*1e-16)
+                prec[k] = np.linalg.inv(unit_cov + np.eye(score.shape[1])*1e-8)
             
-        prec = np.linalg.inv(unit_cov)
+        #prec = np.linalg.inv(unit_cov)
         diff = unit_mean[np.newaxis] - unit_mean[:, np.newaxis]
         maha = np.sum(np.matmul( diff[:, :, np.newaxis], np.matmul(prec[np.newaxis], diff[:, :, :, np.newaxis])), (2,3))
         maha[np.arange(n_clusters), np.arange(n_clusters)] = np.inf
         ranks = np.min(maha, 1)
-
+        
         if np.min(ranks) < threshold:
             k1 = np.argmin(ranks)
             k2 = np.argmin(maha[k1])
@@ -41,14 +37,16 @@ def merge_units(score, spike_train_clear, threshold):
             
             n_clusters -= 1
             unit_mean = np.delete(unit_mean, k_big, 0)
-            unit_cov = np.delete(unit_cov, k_big, 0)
+            prec = np.delete(prec, k_big, 0)
 
             score_temp = score[spike_train_clear[:,1]==k_small]
+            unit_mean[k_small] = np.mean(score_temp, 0)
             if score_temp.shape[0] > 1:
-                unit_mean[k_small] = np.mean(score_temp, 0)
-                unit_cov[k_small] = np.cov(score_temp.T)
+                unit_cov = np.cov(score_temp.T)
             else:
-                unit_cov[k_small] = np.eye(score.shape[1])
+                unit_cov = np.eye(score.shape[1])
+            prec[k_small] = np.linalg.inv(unit_cov + np.eye(score.shape[1])*1e-8)
+
         else:
             all_merged = 1
             

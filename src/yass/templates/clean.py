@@ -12,7 +12,7 @@ def clean_up_templates(spike_train, templates, geometry,
     energy = np.max(templates, 1) - np.min(templates, 1)
     
     # template code: '0' clean template, '1' overly spread template,
-    # '2' collided template, '3' low snr template 
+    # '2' collided template
     template_code = np.zeros((n_templates), 'int16')
 
     # check for overly spread template first
@@ -31,6 +31,12 @@ def clean_up_templates(spike_train, templates, geometry,
     templates_bad = templates[:,:,too_spread]
     template_code[too_spread] = 1
 
+    bad_energy = np.max(templates_bad, 1) - np.min(templates_bad, 1)
+    bad_energy[bad_energy < 0.5*np.max(bad_energy, 0)[np.newaxis]] = 0
+    good_energy = np.max(templates_good, 1) - np.min(templates_good, 1)
+    good_energy[good_energy < 0.5*np.max(good_energy, 0)[np.newaxis]] = 0
+    cross_energy = np.matmul(bad_energy.T, good_energy)
+
     # try to make overly spread templates using good ones.
     mid_t = int((temporal_size-1)/2)
     built_templates = np.zeros(templates_bad.shape)
@@ -40,12 +46,12 @@ def clean_up_templates(spike_train, templates, geometry,
         fit = np.zeros((templates_bad.shape[2], templates_good.shape[2], temporal_size))
         for k in range(templates_bad.shape[2]):
             t_bad = templates_bad[:,:,k] - built_templates[:, :, k]
-            for k2 in range(templates_good.shape[2]):
+            for _, k2 in enumerate(np.where(cross_energy[k] > 0)[0]):
                 t_good = np.flip(templates_good[:,:,k2], 1)  
                 for c in range(n_channels):
                     fit[k,k2] += 2*np.convolve(t_bad[c], t_good[c], 'same')
         fit -= norms[np.newaxis, :, np.newaxis]
-        
+
         for k in range(templates_bad.shape[2]):
             best_fit = np.where(fit[k] == np.max(fit[k]))
             k_fit = best_fit[0][0]
@@ -68,16 +74,18 @@ def clean_up_templates(spike_train, templates, geometry,
     # rebuild spike train and template based on the result
     # keep templates with code 0 and 1 only
     spike_train_new = np.zeros((0, 2), 'int32')
+    original_order = np.zeros(0, 'int32')
     good_units = np.where(np.logical_or(template_code == 0, template_code == 1))[0]
     for j, k in enumerate(good_units):
-        spike_train_temp = spike_train[spike_train[:, 1] == k]
+        idx = spike_train[:, 1] == k
+        spike_train_temp = spike_train[idx]
         spike_train_temp[:, 1] = j
         spike_train_new = np.vstack((spike_train_new, spike_train_temp))
+        original_order = np.hstack((original_order, np.where(idx)[0]))
 
     templates_new = templates[:, :, good_units]
     template_code_new = template_code[good_units]
-    spread_template = np.where(template_code_new == 1)[0]
 
     idx_sort = np.argsort(spike_train_new[:, 0])
     
-    return spike_train_new[idx_sort], templates_new, spread_template
+    return spike_train_new[idx_sort], templates_new, template_code_new, original_order[idx_sort]

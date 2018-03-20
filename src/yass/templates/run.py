@@ -61,7 +61,8 @@ def run(spike_train, output_directory='tmp/',
     spread_threshold = 70
     (spike_train,
      templates,
-     spread_template) = clean_up_templates(spike_train, templates,
+     spread_template,
+     original_order) = clean_up_templates(spike_train, templates,
                                            CONFIG.geom, snr_threshold,
                                            duplicate_threshold,
                                            spread_threshold)
@@ -73,4 +74,4 @@ def run(spike_train, output_directory='tmp/',
     logger.info("Templates done in {0} seconds.".format(
         (currentTime - startTime).seconds))
 
-    return templates, spike_train, spread_template
+    return templates, spike_train, spread_template, original_order

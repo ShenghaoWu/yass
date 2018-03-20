@@ -69,12 +69,12 @@ def prepare_nn(channel_index, whiten_filter,
 
     # check if number of neighboring channel in nn matches with
     # channel index
-    if channel_index.shape[1] != NND.filters_dict['n_neighbors']:
-        raise ValueError('Number of neighboring channels from neighbors is {}'
-                         'but the trained Neural Net expects {} neighbors,'
-                         'they must match'
-                         .format(channel_index.shape[1],
-                                 NND.filters_dict['n_neighbors']))
+    #if channel_index.shape[1] != NND.filters_dict['n_neighbors']:
+    #    raise ValueError('Number of neighboring channels from neighbors is {} '
+    #                     'but the trained Neural Net expects {} neighbors,'
+    #                     'they must match'
+    #                     .format(channel_index.shape[1],
+    #                             NND.filters_dict['n_neighbors']))
 
     # make spike_index tensorflow tensor
     spike_index_tf_all = NND.make_detection_tf_tensors(x_tf,
@@ -103,19 +103,19 @@ def prepare_nn(channel_index, whiten_filter,
                                              spike_index_tf)
 
     # run neural net triage
+    #nneigh = NND.filters_dict['n_neighbors']
     idx_clean = NNT.triage_wf(wf_keep_tf, threshold_triage)
     score_clear_tf = tf.boolean_mask(score_keep_tf, idx_clean)
     spike_index_clear_tf = tf.boolean_mask(spike_index_keep_tf,
                                            idx_clean)
 
     # whiten score
-    whiten_score_clear_tf = make_whitened_score(score_clear_tf,
-                                                spike_index_clear_tf[:, 1],
-                                                whiten_filter)
+    #whiten_score_clear_tf = make_whitened_score(score_clear_tf,
+    #                                            spike_index_clear_tf[:, 1],
+    #                                            whiten_filter)
 
     # gather all output tensors
-    output_tf = (whiten_score_clear_tf, spike_index_clear_tf, spike_index_tf)
-
+    output_tf = (score_clear_tf, spike_index_clear_tf, spike_index_tf)
     return x_tf, output_tf, NND, NNAE, NNT
 
 

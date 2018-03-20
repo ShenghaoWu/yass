@@ -65,7 +65,7 @@ def run(spike_index, templates,
     max_spikes = CONFIG.deconvolution.max_spikes
 
     # get spike_index as list
-    spt_list = make_spt_list(spike_index, n_channels)    
+    spt_list = make_spt_list(spike_index, CONFIG.neighChannels, n_channels)    
     spike_index = 0
     print('make list done')
  
@@ -110,6 +110,7 @@ def run(spike_index, templates,
                  .format(spike_train.shape))
 
     # sort spikes by time
-    spike_train, templates = clean_up(spike_train, templates, max_spikes)
+    max_spikes = 0
+    spike_train, templates, unit_match = clean_up(spike_train, templates, max_spikes)
 
-    return spike_train, np.transpose(templates)
+    return spike_train, np.transpose(templates), unit_match

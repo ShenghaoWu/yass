@@ -212,12 +212,14 @@ def ordered_neighbors(geom, neighbors):
     return channel_indexes, max_neighbors
 
 
-def make_channel_index(neighbors, channel_geometry):
+def make_channel_index(neighbors, channel_geometry, steps):
 
     C, C2 = neighbors.shape
     if C != C2:
         raise ValueError('neighbors is not a square matrix, verify')
 
+    neighbors = n_steps_neigh_channels(neighbors, steps)
+        
     # neighboring channel info
     nneigh = np.max(np.sum(neighbors, 0))
 

@@ -186,8 +186,9 @@ def run_cluster_location(scores, spike_times, CONFIG):
 
             cluster_id = cluster_id[~idx_triage]
             spike_time = spike_time[~idx_triage]
-            if np.sum(idx_triage) != n_data:
-                cluster_id = clean_empty_cluster(cluster_id)
+            score = score[~idx_triage][:, :, 0]
+
+            spike_time, cluster_id, score = clean_empty_cluster(spike_time, cluster_id, score)
 
             # gather clustering information into global variable
             (global_spike_time,
@@ -197,21 +198,21 @@ def run_cluster_location(scores, spike_times, CONFIG):
                                                       global_cluster_id)
 
             if global_scores is None:
-                global_scores = score[~idx_triage][:, :, 0]
+                global_scores = score
             else:
-                global_scores = np.concatenate((global_scores, score[~idx_triage][:, :, 0]), 0)
+                global_scores = np.concatenate((global_scores, score), 0)
 
     # make spike train
     spike_train = np.hstack(
         (global_spike_time[:, np.newaxis],
          global_cluster_id[:, np.newaxis]))
 
-    spike_train = merge_units(global_scores, spike_train, 2*global_scores.shape[1])
+    #spike_train = merge_units(global_scores, spike_train, 2*global_scores.shape[1])
 
     # sort based on spike_time
     idx_sort = np.argsort(spike_train[:, 0])
 
-    return spike_train[idx_sort]
+    return spike_train[idx_sort], global_scores[idx_sort]
 
 
 def global_cluster_info(spike_time, cluster_id,
@@ -274,15 +275,30 @@ def global_cluster_info(spike_time, cluster_id,
     return (global_spike_time, global_cluster_id)
 
 
-def clean_empty_cluster(cluster_id):
-    Ks = np.unique(cluster_id)
+def clean_empty_cluster(spike_time, cluster_id, score, max_spikes=20):
 
-    if Ks.shape[0] == np.max(Ks)+1:
-        return cluster_id
+    n_units = np.max(cluster_id) + 1
+    units_keep  = np.zeros(n_units, 'bool')
+    for k in range(n_units):
+        if np.sum(cluster_id == k) >= max_spikes:
+            units_keep[k] = 1
 
-    else:
-        cluster_id_new = np.zeros(cluster_id.shape[0], 'int16')
-        for j,k in enumerate(Ks):
-            cluster_id_new[cluster_id==k] = j
+    Ks = np.where(units_keep)[0]
+    spike_time_clean = np.zeros(0, 'int32')
+    cluster_id_clean = np.zeros(0, 'int32')
+    score_clean = np.zeros((0, score.shape[1]))
+    for j, k in enumerate(Ks):
 
-        return cluster_id_new
+        spt_temp = spike_time[cluster_id == k]
+        score_temp = score[cluster_id ==k]
+
+        spike_time_clean = np.hstack((spike_time_clean,
+                                      spt_temp))
+        cluster_id_clean = np.hstack((cluster_id_clean,
+                                      np.ones(spt_temp.shape[0], 'int32')*j))
+        score_clean = np.concatenate((score_clean,
+                                      score_temp), 0)
+
+    idx_sort = np.argsort(spike_time_clean)
+
+    return spike_time_clean[idx_sort], cluster_id_clean[idx_sort], score_clean[idx_sort]

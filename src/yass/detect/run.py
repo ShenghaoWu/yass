@@ -273,8 +273,9 @@ def run_neural_network(standarized_path, standarized_params,
 
         # transform scores to location + shape feature space
         if CONFIG.clustering.clustering_method == 'location':
+            threshold = 2
             scores = get_locations_features(scores, rotation, clear[:, 1],
-                                            channel_index, CONFIG.geom)
+                                            channel_index, CONFIG.geom, threshold)
         # saves score
         np.save(path_to_score, scores)
         logger.info('Saved spike scores in {}...'.format(path_to_score))
@@ -283,27 +284,27 @@ def run_neural_network(standarized_path, standarized_params,
 
 
 def get_locations_features(scores, rotation, main_channel,
-                           channel_index, channel_geometry):
+                           channel_index, channel_geometry,
+                           threshold):
 
     n_data, n_features, n_neigh = scores.shape
 
-    rot_rot = np.matmul(np.transpose(rotation), rotation)
     reshaped_score = np.reshape(np.transpose(scores, [0, 2, 1]),
                                 [n_data*n_neigh, n_features])
-    energy = np.sqrt(np.sum(
-        np.reshape(np.multiply(np.matmul(reshaped_score, rot_rot),
-                               reshaped_score),
-                   [n_data, n_neigh, n_features]), 2))
+    energy = np.reshape(np.ptp(np.matmul(
+        reshaped_score, rotation.T), 1), (n_data, n_neigh))
 
     channel_index_per_data = channel_index[main_channel, :]
+    energy = np.piecewise(energy, [energy<threshold, energy>=threshold],[0, lambda x:x-threshold])
 
     channel_geometry = np.vstack((channel_geometry, np.zeros((1, 2), 'int32')))
     channel_locations_all = channel_geometry[channel_index_per_data]
+
     xy = np.divide(np.sum(np.multiply(energy[:, :, np.newaxis],
                                       channel_locations_all), axis=1),
                    np.sum(energy, axis=1, keepdims=True))
     scores = np.concatenate((xy, scores[:, :, 0]), 1)
-
+    
     if scores.shape[0] != n_data:
         raise ValueError('Number of clear spikes changed from {} to {}'
                          .format(n_data, scores.shape[0]))

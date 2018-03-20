@@ -858,15 +858,13 @@ def merge_move(maskedData, vbParam, suffStat, param, L, check_full):
                                 diff_mhat[:,:,:,:, np.newaxis]),(2,3,4))
         maha[np.arange(K), np.arange(K)] = np.Inf
         merged = 0
-        k_untested = np.ones(K)
-        while np.sum(k_untested) > 0 and merged == 0:
-            untested_k = np.argwhere(k_untested)
-            ka = untested_k[np.random.choice(len(untested_k), 1)].ravel()[0]
-            kb = np.argmin(maha[ka, :]).ravel()[0]
-            k_untested[ka] = 0
+        threshold = np.max(np.min(maha,0))
+        while np.min(maha) < threshold and merged == 0:
+            closeset_pair = np.where(maha == np.min(maha))
+            ka = closeset_pair[0][0]
+            kb = closeset_pair[1][0]
             maha[ka, kb] = np.inf
             if np.argmin(maha[kb, :]).ravel()[0] == ka:
-                k_untested[kb] = 0
                 maha[kb, ka] = np.inf
 
             vbParam, suffStat, merged, L, ELBO = check_merge(
@@ -874,6 +872,7 @@ def merge_move(maskedData, vbParam, suffStat, param, L, check_full):
             if merged:
                 n_merged += 1
                 K -= 1
+
         if not merged:
             all_checked = 1
 
@@ -956,21 +955,24 @@ def check_merge(maskedData, vbParam, suffStat, ka, kb, param, L, ELBO):
 
 def spikesort(score, mask, group, param):
 
-    score = np.divide((score - np.mean(score, axis=0, keepdims=True)),
-                      np.std(score, axis=0, keepdims=True))
-    maskedData = maskData(score, mask, group)
+    if score.shape[0] > 1:
+        score = np.divide((score - np.mean(score, axis=0, keepdims=True)),
+                          np.std(score, axis=0, keepdims=True))
+        maskedData = maskData(score, mask, group)
 
-    vbParam = split_merge(maskedData, param)
+        vbParam = split_merge(maskedData, param)
 
-    assignmentTemp = np.argmax(vbParam.rhat, axis=1)
+        assignmentTemp = np.argmax(vbParam.rhat, axis=1)
 
-    assignment = np.zeros(score.shape[0], 'int16')
-    for j in range(score.shape[0]):
-        assignment[j] = assignmentTemp[group[j]]
+        assignment = np.zeros(score.shape[0], 'int16')
+        for j in range(score.shape[0]):
+            assignment[j] = assignmentTemp[group[j]]
 
-    idx_triage = cluster_triage(vbParam, score, 3)
-    assignment[idx_triage] = -1
-
+        idx_triage = cluster_triage(vbParam, score, 20)
+        assignment[idx_triage] = -1
+    else:
+        assignment = np.zeros(1, 'int16')
+        
     return assignment
 
 

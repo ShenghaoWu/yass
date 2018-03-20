@@ -22,7 +22,7 @@ def clean_up(spike_train, templates, max_spikes):
         
     idx_sort = np.argsort(spike_train_clean[:, 0])
     
-    return spike_train_clean[idx_sort], templates_clean
+    return spike_train_clean[idx_sort], templates_clean, Ks
         
     
     
@@ -174,7 +174,7 @@ def svd_shifted_templates(shifted_templates, n_features):
     return temporal_features, spatial_features
 
 
-def make_spt_list(spike_index, n_channels):
+def make_spt_list(spike_index, neighbors, n_channels):
     """
     Change a data structure of spike_index from an array of two
     columns to a list
@@ -199,7 +199,12 @@ def make_spt_list(spike_index, n_channels):
     spike_index_list = [None]*n_channels
 
     for c in range(n_channels):
-        spike_index_list[c] = spike_index[spike_index[:, 1] == c, 0]
+        ch_idx = np.where(neighbors[c])[0]
+        for c2 in range(ch_idx.shape[0]):
+            spike_index_list[c] = np.hstack((spike_index_list[c],
+                                             spike_index[spike_index[:, 1] == c2, 0]))
+        
+        spike_index_list[c] = np.sort(np.unique(spike_index_list[c]))
 
     return spike_index_list
 

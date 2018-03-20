@@ -156,7 +156,6 @@ def mergeTemplates(templates, weights, spike_train, neighbors,
         amps = np.max(np.abs(templates[:, :, k]), axis=1)
         mainC[k] = np.argmax(amps)
         visible_channels[k, amps > 0.5*np.amax(amps)] = 1
-        visible_channels[k, np.argmax(amps)] = 1
 
     mainC = sparse.csc_matrix(
         (np.ones(K), (np.arange(K), mainC)), shape=(K, C), dtype='bool')

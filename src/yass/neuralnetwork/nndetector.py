@@ -100,10 +100,10 @@ class NeuralNetDetector(object):
 
         # get parameters
         K1, K2 = self.filters_dict['filters']
-        nneigh = channel_index.shape[1]
+        nneigh = self.filters_dict['n_neighbors']
 
         # save neighbor channel index
-        self.channel_index = channel_index
+        self.channel_index = channel_index[:, :nneigh]
 
         # Temporal shape of input
         T = tf.shape(x_tf)[0]
@@ -123,7 +123,8 @@ class NeuralNetDetector(object):
             (tf.transpose(layer11, [2, 0, 1, 3]), tf.zeros((1, 1, T, K2))),
             axis=0)
         temp = tf.transpose(
-            tf.gather(zero_added_layer11, channel_index), [0, 2, 3, 1, 4])
+            tf.gather(zero_added_layer11, self.channel_index),
+            [0, 2, 3, 1, 4])
         temp2 = conv2d_VALID(tf.reshape(temp, [-1, T, nneigh, K2]),
                              self.W2) + self.b2
 

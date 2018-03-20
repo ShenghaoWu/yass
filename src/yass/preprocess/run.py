@@ -106,20 +106,20 @@ def run(output_directory='tmp/', if_file_exists='skip'):
                                          OUTPUT_DTYPE,
                                          if_file_exists=if_file_exists)
 
-    # Whiten
-    whiten_filter = whiten.matrix(standarized_path,
-                                  standarized_params['dtype'],
-                                  standarized_params['n_channels'],
-                                  standarized_params['data_format'],
-                                  CONFIG.neighChannels,
-                                  CONFIG.geom,
-                                  CONFIG.spikeSize,
-                                  CONFIG.resources.max_memory,
-                                  TMP,
-                                  if_file_exists=if_file_exists)
-
     channel_index = make_channel_index(CONFIG.neighChannels,
-                                       CONFIG.geom)
+                                       CONFIG.geom, 2)
+    
+    # Whiten
+    #whiten_filter = whiten.matrix(standarized_path,
+    #                              standarized_params['dtype'],
+    #                              standarized_params['n_channels'],
+    #                              standarized_params['data_format'],
+    #                              channel_index,
+    #                              CONFIG.spikeSize,
+    #                              CONFIG.resources.max_memory,
+    #                              TMP,
+    #                              if_file_exists=if_file_exists)
+    whiten_filter = 0
 
     return (str(standarized_path), standarized_params, channel_index,
             whiten_filter)
