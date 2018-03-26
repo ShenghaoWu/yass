@@ -956,8 +956,6 @@ def check_merge(maskedData, vbParam, suffStat, ka, kb, param, L, ELBO):
 def spikesort(score, mask, group, param):
 
     if score.shape[0] > 1:
-        score = np.divide((score - np.mean(score, axis=0, keepdims=True)),
-                          np.std(score, axis=0, keepdims=True))
         maskedData = maskData(score, mask, group)
 
         vbParam = split_merge(maskedData, param)
@@ -973,7 +971,7 @@ def spikesort(score, mask, group, param):
     else:
         assignment = np.zeros(1, 'int16')
         
-    return assignment
+    return assignment, vbParam
 
 
 def split_merge(maskedData, param):

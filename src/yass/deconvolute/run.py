@@ -65,7 +65,7 @@ def run(spike_index, templates,
     max_spikes = CONFIG.deconvolution.max_spikes
 
     # get spike_index as list
-    spt_list = make_spt_list(spike_index, CONFIG.neighChannels, n_channels)    
+    spt_list = make_spt_list(spike_index, n_channels)    
     spike_index = 0
     print('make list done')
  

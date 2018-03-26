@@ -174,21 +174,17 @@ def svd_shifted_templates(shifted_templates, n_features):
     return temporal_features, spatial_features
 
 
-def make_spt_list(spike_index, neighbors, n_channels):
+def make_spt_list(spike_index, n_channels):
     """
     Change a data structure of spike_index from an array of two
     columns to a list
-
     Parameters
     ----------
-
     spike_index: numpy.ndarray (n_spikes, 2)
        A 2D array containing spikes information with two columns,
        where the first column is spike time and the second is channel.
-
     n_channels: int
        the number of channels in recording (or length of output list)
-
     Returns
     -------
     spike_index_list: list (n_channels)
@@ -199,12 +195,7 @@ def make_spt_list(spike_index, neighbors, n_channels):
     spike_index_list = [None]*n_channels
 
     for c in range(n_channels):
-        ch_idx = np.where(neighbors[c])[0]
-        for c2 in range(ch_idx.shape[0]):
-            spike_index_list[c] = np.hstack((spike_index_list[c],
-                                             spike_index[spike_index[:, 1] == c2, 0]))
-        
-        spike_index_list[c] = np.sort(np.unique(spike_index_list[c]))
+        spike_index_list[c] = spike_index[spike_index[:, 1] == c, 0]
 
     return spike_index_list
 
