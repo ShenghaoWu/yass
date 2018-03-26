@@ -155,6 +155,14 @@ class maskData:
         self.meanEta = self.sumEta / \
             self.weight[:, np.newaxis, np.newaxis, np.newaxis]
 
+class pri(object):
+    def __init__(self, mu, V, nu, lambda0, alpha, beta):
+        self.mu = mu
+        self.V = V
+        self.nu = nu
+        self.lambda0 = lambda0
+        self.a = alpha
+        self.beta = beta
 
 class vbPar:
     """
@@ -230,12 +238,14 @@ class vbPar:
 
             param: Config object (See config.py for details)
         """
-        prior = param.cluster_prior
+#         prior = param.cluster_prior
         nfeature, Khat, nchannel = suffStat.sumY.shape
         self.ahat = prior.a + suffStat.Nhat
         self.lambdahat = prior.lambda0 + suffStat.Nhat
-        self.muhat = suffStat.sumY / self.lambdahat[:, np.newaxis]
-        invV = np.eye(nfeature) / prior.V
+#         print(prior.mu.shape, suffStat.sumY.shape, self.lambdahat.shape)
+        self.muhat = (suffStat.sumY + prior.mu[:, np.newaxis] * prior.lambda0)/ self.lambdahat[:, np.newaxis]
+#         invV = np.eye(nfeature) / prior.V
+        invV = np.linalg.inv(prior.V)
         self.Vhat = np.zeros([nfeature, nfeature, Khat, nchannel])
         self.invVhat = np.zeros([nfeature, nfeature, Khat, nchannel])
         for n in range(nchannel):
@@ -268,12 +278,13 @@ class vbPar:
 
             param: Config object (See config.py for details)
         """
-        prior = param.cluster_prior
+#         prior = param.cluster_prior
         nfeature, Khat, nchannel = suffStat.sumY.shape
         self.ahat = prior.a + suffStat.Nhat
         self.lambdahat = prior.lambda0 + suffStat.Nhat
         self.muhat = suffStat.sumY / self.lambdahat[:, np.newaxis]
-        invV = np.eye(nfeature) / prior.V
+#         invV = np.eye(nfeature) / prior.V
+        invV = np.linalg.inv(prior.V)
         self.Vhat = np.zeros([nfeature, nfeature, Khat, nchannel])
         self.invVhat = np.zeros([nfeature, nfeature, Khat, nchannel])
         for n in range(nchannel):
@@ -513,7 +524,7 @@ class ELBO_Class:
             nfeature, Khat, nchannel = vbParam.muhat.shape
             P = nfeature * nchannel
 
-        prior = param.cluster_prior
+#         prior = param.cluster_prior
         fit_term = np.zeros(Khat)
         bmterm = np.zeros(Khat)
         # entropy_term = np.zeros(Khat)
@@ -576,10 +587,10 @@ class ELBO_Class:
 
         bmterm1 = 0.5 * prior.nu * \
             np.sum(np.linalg.slogdet(
-                Vhat[k_ind, :, :, :] / prior.V)[1], axis=1)
+                np.matmul(Vhat[k_ind, :, :, :], np.linalg.inv(prior.V)))[1], axis=1)
 
         bmterm2 = -0.5 * vbParam.nuhat[k_ind] * (np.sum(
-            np.trace(Vhat[k_ind, :, :, :] / prior.V, axis1=2, axis2=3),
+            np.trace(np.matmul(Vhat[k_ind, :, :, :], np.linalg.inv(prior.V)), axis1=2, axis2=3),
             axis=1))
 
         bmterm3 = 0.5 * (vbParam.nuhat[k_ind] * P + P -
@@ -909,15 +920,16 @@ def check_merge(maskedData, vbParam, suffStat, ka, kb, param, L, ELBO):
          np.sum(suffStat.sumYSq2[:, :, (ka, kb), :], axis=2, keepdims=True)),
         axis=2)
 
-    vbParamTemp.ahat = param.cluster_prior.a + suffStatTemp.Nhat
-    vbParamTemp.lambdahat = param.cluster_prior.lambda0 + suffStatTemp.Nhat
-    vbParamTemp.nuhat = param.cluster_prior.nu + suffStatTemp.Nhat
+    vbParamTemp.ahat = prior.a + suffStatTemp.Nhat
+    vbParamTemp.lambdahat = prior.lambda0 + suffStatTemp.Nhat
+    vbParamTemp.nuhat = prior.nu + suffStatTemp.Nhat
     vbParamTemp.muhat = np.concatenate(
         (vbParam.muhat[:, no_kab, :],
          suffStatTemp.sumY[:, [K - 2], :] / vbParamTemp.lambdahat[K - 2]),
         axis=1)
     nfeature, Khat, nchannel = suffStat.sumY.shape
-    invV = np.eye(nfeature) / param.cluster_prior.V
+#     invV = np.eye(nfeature) / prior.V
+    invV = np.linalg.inv(prior.V)
     invVhatTemp = np.zeros((nfeature, nfeature, 1, nchannel))
     VhatTemp = np.zeros((nfeature, nfeature, 1, nchannel))
     for n in range(nchannel):
@@ -951,9 +963,17 @@ def check_merge(maskedData, vbParam, suffStat, ka, kb, param, L, ELBO):
             L = np.asarray([1])
         return vbParamTemp, suffStatTemp, merged, L, ELBO_amerge
 
-
+# prior = pri()
+    
 def spikesort(score, mask, group, param):
     usedchan = np.asarray(np.where(np.sum(mask, axis=0) >= 1)).ravel()
+    global prior
+    mu = np.mean(score, axis = 0)
+    V = np.zeros([5,5])
+    V[np.arange(2).reshape([2,1]), np.arange(2)] = np.cov(score[:,:2,0].T)
+    V[np.arange(2,5).reshape([3,1]), np.arange(2,5)] = np.cov(score[:,2:,0].T)
+    V = np.linalg.inv(V * param.cluster_prior.nu)
+    prior = pri(mu,V, param.cluster_prior.nu, param.cluster_prior.lambda0, param.cluster_prior.a, param.cluster_prior.beta) 
     score = score[:, :, usedchan]
     mask = mask[:, usedchan]
     # FIXME: seems like this is never used

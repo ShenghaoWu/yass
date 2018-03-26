@@ -181,6 +181,15 @@ def run_cluster_location(scores, spike_times, CONFIG):
             # make a fake mask of ones to run clustering algorithm
             mask = np.ones((n_data, 1))
             group = np.arange(n_data)
+            
+#             CONFIG.cluster_prior.mu = np.mean(score,axis = 0)
+#             print(CONFIG.cluster_prior.mu)
+#             CONFIG.cluster_prior.V = np.zeros([5,5])
+            
+#             CONFIG.cluster_prior.V[np.ix_([0,2],[0,2])] = np.cov(score[:,:2,0])
+#             CONFIG.cluster_prior.V[np.ix_([2,5],[2,5])] = np.cov(score[:,2:,0])
+            
+            
             cluster_id, vbParam = spikesort(score, mask,
                                    group, CONFIG)
             
