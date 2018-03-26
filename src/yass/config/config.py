@@ -1,4 +1,7 @@
-from functools import reduce
+"""
+YASS configuration
+"""
+
 from os import path
 from collections import Mapping, MutableSequence
 import keyword
@@ -6,10 +9,9 @@ import logging
 
 import yaml
 import numpy as np
-from pkg_resources import resource_filename
 
 from yass import geometry as geom
-from yass.config.validator import Validator
+from yass.config.validate import validate
 
 
 class FrozenJSON(object):
@@ -19,8 +21,8 @@ class FrozenJSON(object):
     @classmethod
     def from_yaml(cls, path_to_file):
         # load config file
-        with open(path_to_file) as f:
-            mapping = yaml.load(f)
+        with open(path_to_file) as file:
+            mapping = yaml.load(file)
 
         obj = cls(mapping)
 
@@ -28,7 +30,7 @@ class FrozenJSON(object):
         obj._path_to_file = path_to_file
 
         logger = logging.getLogger(__name__)
-        logger.debug('Loaded from file: {}'.format(obj._path_to_file))
+        logger.debug('Loaded from file: %s', obj._path_to_file)
 
         return obj
 
@@ -43,7 +45,7 @@ class FrozenJSON(object):
 
     def __init__(self, mapping):
         self._logger = logging.getLogger(__name__)
-        self._logger.debug('Loaded with params: {}'.format(mapping))
+        self._logger.debug('Loaded with params: %s ', mapping)
         self._path_to_file = None
 
         self._data = {}
@@ -59,7 +61,12 @@ class FrozenJSON(object):
         if hasattr(self._data, name):
             return getattr(self._data, name)
         else:
-            return FrozenJSON(self._data[name])
+            try:
+                return FrozenJSON(self._data[name])
+            except KeyError:
+                raise KeyError('Trying to access a key that does not exist, '
+                               '({}) keys are: {}'
+                               .format(name, self._data.keys()))
 
     def __dir__(self):
         return self._data.keys()
@@ -79,8 +86,8 @@ class FrozenJSON(object):
         if self._path_to_file:
             return ('YASS config file loaded from: {}'
                     .format(self._path_to_file))
-        else:
-            return 'YASS config file loaded with: {}'.format(self._data)
+
+        return 'YASS config file loaded with: {}'.format(self._data)
 
 
 class Config(FrozenJSON):
@@ -94,7 +101,7 @@ class Config(FrozenJSON):
     After initialization, attributes cannot be changed
     """
     def __init__(self, mapping):
-        mapping = self._validate(mapping)
+        mapping = validate(mapping)
 
         super(Config, self).__init__(mapping)
 
@@ -107,29 +114,27 @@ class Config(FrozenJSON):
         # GEOMETRY PARAMETERS
         path_to_geom = path.join(self.data.root_folder, self.data.geometry)
         self._set_param('geom', geom.parse(path_to_geom,
-                        self.recordings.n_channels))
+                                           self.recordings.n_channels))
 
-        neighChannels = geom.find_channel_neighbors(
+        neigh_channels = geom.find_channel_neighbors(
             self.geom, self.recordings.spatial_radius)
-        self._set_param('neighChannels', neighChannels)
+        self._set_param('neigh_channels', neigh_channels)
 
-        channelGroups = geom.make_channel_groups(self.recordings.n_channels,
-                                                 self.neighChannels,
-                                                 self.geom)
-        self._set_param('channelGroups', channelGroups)
+        channel_groups = geom.make_channel_groups(self.recordings.n_channels,
+                                                  self.neigh_channels,
+                                                  self.geom)
+        self._set_param('channel_groups', channel_groups)
 
-        self._logger.debug('Geometry parameters. Geom: {}, neighChannels: '
-                           '{}, channelGroups {}'
-                           .format(self.geom, self.neighChannels,
-                                   self.channelGroups))
+        self._logger.debug('Geometry parameters. Geom: %s, neigh_channels: '
+                           '%s, channel_groups %s', self.geom,
+                           self.neigh_channels, self.channel_groups)
 
-        self._set_param('spikeSize',
+        self._set_param('spike_size',
                         int(np.round(self.recordings.spike_size_ms *
                                      self.recordings.sampling_rate /
                                      (2*1000))))
-        self._set_param('templatesMaxShift',
+        self._set_param('templates_max_shift',
                         int(self.recordings.sampling_rate/1000))
-        self._set_param('stdFactor', 4)
 
     def __setattr__(self, name, value):
         if not name.startswith('_'):
@@ -144,19 +149,3 @@ class Config(FrozenJSON):
         parameters that need to be computed *right after* initialization
         """
         self._data[name] = value
-
-    def _validate(self, mapping):
-        """Validate values in the input dictionary
-        """
-        path_to_validator = resource_filename('yass',
-                                              'assets/config/validator.yaml')
-        with open(path_to_validator) as f:
-            validator_content = yaml.load(f)
-
-        validator = Validator(mapping, **validator_content)
-        mapping = validator.validate()
-
-        return mapping
-
-    def _pretty_iterator(self, it):
-        return reduce(lambda x, y: x+', '+y, it)

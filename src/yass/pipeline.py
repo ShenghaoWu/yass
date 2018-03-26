@@ -1,6 +1,7 @@
 """
 Built-in pipeline
 """
+import time
 import logging
 import logging.config
 import shutil
@@ -16,12 +17,15 @@ except ImportError:
 import numpy as np
 import yaml
 
+
+import yass
 from yass import set_config
 from yass import preprocess, detect, cluster, deconvolute
 from yass import templates as get_templates
 from yass import read_config
 
-from yass.util import load_yaml, save_metadata, load_logging_config_file
+from yass.util import (load_yaml, save_metadata, load_logging_config_file,
+                       human_readable_time)
 from yass.explore import RecordingExplorer
 from yass.threshold import dimensionality_reduction as dim_red
 
@@ -93,45 +97,42 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
     # instantiate logger
     logger = logging.getLogger(__name__)
 
+    # print yass version
+    logger.info('YASS version: %s', yass.__version__)
+
     # preprocess
+    start = time.time()
     (standarized_path,
      standarized_params,
      channel_index,
      whiten_filter) = preprocess.run(output_directory=output_dir)
+    time_preprocess = time.time() - start
 
     # detect
+    start = time.time()
     (score, spike_index_clear,
      spike_index_all) = detect.run(standarized_path,
                                    standarized_params,
                                    channel_index,
                                    whiten_filter,
                                    output_directory=output_dir)
+    time_detect = time.time() - start
 
     # cluster
-    path_to_spike_train_clear = path.join(TMP_FOLDER, 'spike_train_clear.npy')
-    if os.path.exists(path_to_spike_train_clear):
-        spike_train_clear = np.load(path_to_spike_train_clear)
-
-    else:
-        spike_train_clear = cluster.run(score, spike_index_clear)
-        logging.info('Saving clear spike train in {}'.format(path_to_spike_train_clear))
-        np.save(path_to_spike_train_clear, spike_train_clear)
+    start = time.time()
+    spike_train_clear = cluster.run(score, spike_index_clear)
+    time_cluster = time.time() - start
 
     # get templates
-    path_to_templates = path.join(TMP_FOLDER, 'templates.npy')
-    path_to_clear_spike_train_after_merge = path.join(TMP_FOLDER, 'spike_train_clear_after_merge.npy')
-    if os.path.exists(path_to_clear_spike_train_after_merge):
-        templates = np.load(path_to_templates)
-        spike_train_clear = np.load(path_to_clear_spike_train_after_merge)
-    else:
-        templates, spike_train_clear, _ = get_templates.run(spike_train_clear)
-        logging.info('Saving templates in {}'.format(path_to_templates))
-        np.save(path_to_templates, templates)
-        np.save(path_to_clear_spike_train_after_merge, spike_train_clear)
+    start = time.time()
+    templates = get_templates.run(spike_train_clear)
+    time_templates = time.time() - start
 
     # run deconvolution
-    spike_train, templates = deconvolute.run(spike_index_all, templates,
-                                             output_directory=output_dir)
+    start = time.time()
+    spike_train = deconvolute.run(spike_index_all, templates,
+                                  output_directory=output_dir)
+    time_deconvolution = time.time() - start
 
     # save templates
     path_to_templates = path.join(TMP_FOLDER, 'templates.npy')
@@ -180,7 +181,7 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
         # load waveforms for all spikes in the spike train
         logger.info('Loading waveforms from all spikes in the spike train...')
         explorer = RecordingExplorer(STANDARIZED_PATH,
-                                     spike_size=CONFIG.spikeSize,
+                                     spike_size=CONFIG.spike_size,
                                      dtype=PARAMS['dtype'],
                                      n_channels=PARAMS['n_channels'],
                                      data_format=PARAMS['data_format'])
@@ -204,7 +205,7 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
                     .format(path_to_waveforms))
 
         waveforms_score = dim_red.score(waveforms, rotation, main_channels,
-                                        CONFIG.neighChannels, CONFIG.geom)
+                                        CONFIG.neigh_channels, CONFIG.geom)
         path_to_waveforms_score = path.join(TMP_FOLDER, 'waveforms_score.npy')
         np.save(path_to_waveforms_score, waveforms_score)
         logger.info('Saved all scores in {}...'.format(path_to_waveforms))
@@ -221,10 +222,29 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
 
         templates_score = dim_red.score(templates_, rotation,
                                         main_channels_tmpls,
-                                        CONFIG.neighChannels, CONFIG.geom)
+                                        CONFIG.neigh_channels, CONFIG.geom)
         path_to_templates_score = path.join(TMP_FOLDER, 'templates_score.npy')
         np.save(path_to_templates_score, templates_score)
         logger.info('Saved all templates scores in {}...'
                     .format(path_to_waveforms))
+
+    logger.info('Finished YASS execution. Timing summary:')
+    total = (time_preprocess + time_detect + time_cluster + time_templates
+             + time_deconvolution)
+    logger.info('\t Preprocess: %s (%.2f %%)',
+                human_readable_time(time_preprocess),
+                time_preprocess/total*100)
+    logger.info('\t Detection: %s (%.2f %%)',
+                human_readable_time(time_detect),
+                time_detect/total*100)
+    logger.info('\t Clustering: %s (%.2f %%)',
+                human_readable_time(time_cluster),
+                time_cluster/total*100)
+    logger.info('\t Templates: %s (%.2f %%)',
+                human_readable_time(time_templates),
+                time_templates/total*100)
+    logger.info('\t Deconvolution: %s (%.2f %%)',
+                human_readable_time(time_deconvolution),
+                time_deconvolution/total*100)
 
     return spike_train

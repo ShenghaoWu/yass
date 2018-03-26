@@ -104,6 +104,7 @@ def run(spike_index, templates,
         threshold_d=threshold_d
     )   
 
+
     spike_train = np.concatenate([element for element in res], axis=0)
 
     logger.debug('spike_train.shape: {}'
