@@ -95,7 +95,7 @@ def run(output_directory='tmp/', if_file_exists='skip'):
                                    if_file_exists=if_file_exists)
 
     
-    path = '/media/cat/6788503b-cb27-41da-8034-cae4d7dda5cd/liam/ella/2017-12-04-5/data001_data003/tmp/filtered.bin'
+    #path = '/media/cat/6788503b-cb27-41da-8034-cae4d7dda5cd/liam/ella/2017-12-04-5/data001_data003/tmp/filtered.bin'
 
     # standarize
     (standarized_path,

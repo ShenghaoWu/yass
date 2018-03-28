@@ -236,6 +236,20 @@ def make_spt_list(spike_index, n_channels):
     return spike_index_list
 
 
+def make_spt_list_parallel(spike_index,n_channels):
+
+    spike_index_list = [None]*n_channels
+
+    for c in range(n_channels):
+	if c%50==0: print ("making spt list channel: ",c)
+        spike_index_list[c] = spike_index[spike_index[:, 1] == c, 0]
+
+    return spike_index_list
+    
+    #print ("making spt list channel: ",c)
+    #return spike_index[spike_index[:, 1] == channel, 0]
+
+
 def get_longer_spt_list(spt, n_explore):
     """
     Given a spike time, -n_explore to n_explore time points

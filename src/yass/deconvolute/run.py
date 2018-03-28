@@ -6,7 +6,7 @@ import parmap
 import os.path as path
 import time
 
-from yass.deconvolute.util import svd_shifted_templates, small_shift_templates, make_spt_list, clean_up, calculate_temp_temp_parallel
+from yass.deconvolute.util import svd_shifted_templates, small_shift_templates, make_spt_list, make_spt_list_parallel, clean_up, calculate_temp_temp_parallel
 from yass.deconvolute.deconvolve import deconvolve_new_allcores, fix_indexes
 from yass import read_config
 from yass.batch import BatchProcessor
@@ -65,6 +65,7 @@ def run(spike_index, templates,
     threshold_d = CONFIG.deconvolution.threshold_dd
     n_features = CONFIG.deconvolution.n_features
     max_spikes = CONFIG.deconvolution.max_spikes
+    n_processors = CONFIG.resources.n_processors
 
     TMP_FOLDER = CONFIG.data.root_folder
 
@@ -74,8 +75,20 @@ def run(spike_index, templates,
     if os.path.exists(path_to_spt_list):
         spt_list = np.load(path_to_spt_list)
     else:
-	spt_list = make_spt_list(spike_index, n_channels)    
-        np.save(path_to_spt_list, spt_list)	
+	n_processors = 30
+	spike_index_chunks = np.array_split(spike_index,n_processors)
+	spt_list = parmap.map(make_spt_list_parallel, spike_index_chunks, n_channels, processes=n_processors)
+	
+	#Recombine the spikes across all channels from different processors
+	spt_list_total = []
+	for k in range(n_channels):
+	    spt_list_total.append([])
+	    for p in range(n_processors):
+		spt_list_total[k].append(spt_list[p][k])
+		
+	    spt_list_total[k]=np.hstack(spt_list_total[k])
+	np.save(path_to_spt_list, spt_list_total)	
+
     spike_index = 0
  
     # upsample template
@@ -110,9 +123,11 @@ def run(spike_index, templates,
 	    n_processors = CONFIG.resources.n_processors
 	    #n_chunks = n_processors
 	    indexes = np.arange(temporal_features.shape[0])
-	    template_list = np.array_split(indexes,n_processors)
+	    #template_list = np.array_split(indexes,n_processors)
+	    template_list = np.array_split(indexes,20)#[:66]
 
 	    temp_temp_array = parmap.map(calculate_temp_temp_parallel, template_list, temporal_features,spatial_features, processes=n_processors)
+	    print ("Completed temp_temp, saving...")
 	    np.save(path_to_temp_temp, np.concatenate((temp_temp_array),axis=1)*2)
 
 	else:
@@ -152,7 +167,7 @@ def run(spike_index, templates,
 
     #********************** PARALLELIZED RUN ***********************
     else:
-	buffer_size=2*n_temporal_big
+	buffer_size=2*n_temporal_big+1
 	print buffer_size
 	n_channels = CONFIG.recordings.n_channels
   
@@ -194,7 +209,7 @@ def run(spike_index, templates,
 	    print ("# of chunks: ", len(idx_list), " # cores: ", n_processors)
 	
 	#************************************************************************************************************
-	#************************************************************************************************************
+	#****************************************f********************************************************************
 	#************************************************************************************************************
 	#Run parallel deconvolution
 	
@@ -214,13 +229,14 @@ def run(spike_index, templates,
 
 	else:
 	    spike_trains = []
+	    total_time = time.time()
 	    for k in range(len(idx_list)):
 		start_time = time.time()
 		print "..iteration: ", k
 	    
 		spike_trains.append(deconvolve_new_allcores([idx_list[k],k], filename_bin, path_to_spt_list, path_to_temp_temp, path_to_shifted_templates, buffer_size, n_channels, temporal_features, spatial_features, n_explore, threshold_d))
 		
-		print ("Total time for single batch of deconvolution: ", time.time()-start_time)
+		print ("Single batch of deconvolfution: ", time.time()-start_time, " total from start: ", time.time()-total_time)
 
 	spike_train = np.vstack(spike_trains)
 	print (spike_train.shape)

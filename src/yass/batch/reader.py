@@ -62,8 +62,9 @@ class RecordingsReader(object):
 	#print (path_to_recordings)
 	#path_to_recordings = '/media/cat/6788503b-cb27-41da-8034-cae4d7dda5cd/liam/ella/2017-12-04-5/data001_data003/tmp/filtered.bin'
         path_to_yaml = path_to_recordings.replace('.bin', '.yaml')
-
-        if (not os.path.isfile(path_to_yaml) and (dtype is None or
+	#path_to_yaml = '/home/cat/code/yass/data/ej49_data1_set1.yaml'
+        
+	if (not os.path.isfile(path_to_yaml) and (dtype is None or
            n_channels is None or data_format is None)):
             raise ValueError('At least one of: dtype, channels or data_format '
                              'are None, this is only allowed when a yaml '
@@ -90,6 +91,7 @@ class RecordingsReader(object):
                              'bytes is not divisible by the item size {}'
                              ' bytes'.format(filesize, self._dtype.itemsize))
 
+	print filesize, self._dtype.itemsize, n_channels
         if int(filesize / self._dtype.itemsize) % n_channels:
             raise ValueError('Wrong n_channels, length of the data does not '
                              'match number of n_channels (observations % '
