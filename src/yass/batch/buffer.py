@@ -44,7 +44,7 @@ class BufferGenerator(object):
         rows, cols = data.shape
         buff_shape = ((size, cols) if self.data_format == 'long'
                       else (rows, size))
-        buff = np.zeros(buff_shape)
+        buff = np.zeros((buff_shape))
 
         append = np.vstack if self.data_format == 'long' else np.hstack
 

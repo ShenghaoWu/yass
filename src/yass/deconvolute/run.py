@@ -71,7 +71,7 @@ def run(spike_index, templates,
 
     # get spt_list
     print('making spt list')
-    path_to_spt_list = path.join(TMP_FOLDER, 'spt_list.npy')
+    path_to_spt_list = path.join(TMP_FOLDER, 'tmp/spt_list.npy')
     if os.path.exists(path_to_spt_list):
         spt_list = np.load(path_to_spt_list)
     else:
@@ -93,7 +93,7 @@ def run(spike_index, templates,
  
     # upsample template
     print('computing shifted templates')
-    path_to_shifted_templates = path.join(TMP_FOLDER, 'shifted_templates.npy')
+    path_to_shifted_templates = path.join(TMP_FOLDER, 'tmp/shifted_templates.npy')
     if os.path.exists(path_to_shifted_templates):
         shifted_templates= np.load(path_to_shifted_templates)
     else:
@@ -102,38 +102,40 @@ def run(spike_index, templates,
 
     # svd templates
     print('computing svd templates')
-    path_to_svd_templates = path.join(TMP_FOLDER, 'svd_templates.npz')
-    if os.path.exists(path_to_svd_templates):
-        data = np.load(path_to_svd_templates)
-	temporal_features=data['temporal_features']
-	spatial_features=data['spatial_features']
+    path_to_temporal_features = path.join(TMP_FOLDER, 'tmp/temporal_features.npy')
+    path_to_spatial_features = path.join(TMP_FOLDER, 'tmp/spatial_features.npy')
+    if os.path.exists(path_to_temporal_features):
+        #data = np.load(path_to_svd_templates)
+	temporal_features=np.load(path_to_temporal_features)
+	spatial_features=np.load(path_to_spatial_features)
     else:
 	temporal_features, spatial_features = svd_shifted_templates(shifted_templates, n_features)
-        np.savez(path_to_svd_templates, temporal_features=temporal_features, spatial_features=spatial_features)
+        np.save(path_to_spatial_features, spatial_features)
+        np.save(path_to_temporal_features, temporal_features)
 
 
     # calculate convolution of pairwise templates
     print ("computing temp_temp")
-    path_to_temp_temp = path.join(TMP_FOLDER, 'temp_temp.npy')
+    path_to_temp_temp = path.join(TMP_FOLDER, 'tmp/temp_temp.npy')
     if os.path.exists(path_to_temp_temp):
         temp_temp = np.load(path_to_temp_temp)
     else:
-	#Parallel temp_temp computation
-	if True: 
-	    n_processors = CONFIG.resources.n_processors
-	    #n_chunks = n_processors
-	    indexes = np.arange(temporal_features.shape[0])
-	    #template_list = np.array_split(indexes,n_processors)
-	    template_list = np.array_split(indexes,20)#[:66]
+	n_processors = CONFIG.resources.n_processors
+	#n_chunks = n_processors
+	indexes = np.arange(temporal_features.shape[0])
+	template_list = np.array_split(indexes,n_processors)
+	#template_list = np.array_split(indexes,20)#[:66]
 
-	    temp_temp_array = parmap.map(calculate_temp_temp_parallel, template_list, temporal_features,spatial_features, processes=n_processors)
-	    print ("Completed temp_temp, saving...")
-	    np.save(path_to_temp_temp, np.concatenate((temp_temp_array),axis=1)*2)
+	temp_temp_array = parmap.map(calculate_temp_temp_parallel, template_list, temporal_features,spatial_features, processes=n_processors)
+	print ("Completed temp_temp, saving...")
+	temp_temp = np.concatenate((temp_temp_array),axis=1)*2
+	print temp_temp.shape
+	np.save(path_to_temp_temp, temp_temp)
 
-	else:
-	    temp_temp = calculate_temp_temp(temporal_features, spatial_features)
-	    temp_temp *= 2
-	    np.save(path_to_temp_temp, temp_temp)	
+	#Single core: 
+	#temp_temp = calculate_temp_temp(temporal_features, spatial_features)
+	#temp_temp *= 2
+	#np.save(path_to_temp_temp, temp_temp)	
 
 
     #******************** SINGLE PROCESSOR RUN ************************

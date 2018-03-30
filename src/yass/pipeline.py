@@ -25,6 +25,8 @@ from yass.util import load_yaml, save_metadata, load_logging_config_file
 from yass.explore import RecordingExplorer
 from yass.threshold import dimensionality_reduction as dim_red
 
+from yass.neuralnetwork.get_nn_output import get_o_layer
+
 
 def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
         complete=False):
@@ -98,6 +100,15 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
      standarized_params,
      channel_index,
      whiten_filter) = preprocess.run(output_directory=output_dir)
+
+
+    #Save o_layer
+    path_to_olayer = path.join(TMP_FOLDER, 'o_layer.bin')
+    if os.path.exists(path_to_olayer):
+	pass
+    else:
+	o_path, o_params = get_o_layer(standarized_path, standarized_params)
+
 
     # detect
     (score, spike_index_clear,

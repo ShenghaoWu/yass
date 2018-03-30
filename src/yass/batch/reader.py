@@ -76,9 +76,9 @@ class RecordingsReader(object):
             with open(path_to_yaml) as f:
                 params = yaml.load(f)
 
-            n_channels = params['recordings']['n_channels']
-            data_format = params['recordings']['format']
-            dtype = params['recordings']['dtype']
+            n_channels = params['n_channels']
+            data_format = params['data_format']
+            dtype = params['dtype']
 
         self._data_format = data_format
         self._n_channels = n_channels
@@ -298,7 +298,7 @@ class BinaryReader(object):
                                           'is not implemented in C order')
 
             if isinstance(rows, slice):
-                rows = range(rows.start, rows.stop)
+                rows = range(int(rows.start), int(rows.stop))
 
             res = self._read_row_major_order(rows, cols.start, cols.stop)
         else:
