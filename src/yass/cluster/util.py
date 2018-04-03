@@ -1,7 +1,7 @@
 import numpy as np
 import logging
 
-from yass.mfm import spikesort
+from yass.mfm import spikesort, maskData, cluster_triage
 
 
 def run_cluster(scores, masks, groups, spike_times,
@@ -133,24 +133,71 @@ def run_cluster(scores, masks, groups, spike_times,
 
     return spike_train[idx_sort]
 
+def recover_clear_spikes(scores, spike_times, outlier_vbPar):
+    
+    
+    print(len(scores))
+    n_channels = len(outlier_vbPar)
+    global_spike_time = np.zeros(0).astype('uint32')
+    global_cluster_id = np.zeros(0).astype('uint16')
+    for channel in range(n_channels):
+        print ("...recover clear spikes ch: ", channel)
+        #logger.info('Processing channel {}'.format(channel))
 
+        score = scores[channel]
+        spike_time = spike_times[channel]
+        
+        n_data = score.shape[0]
+
+        if n_data > 0:
+
+            # make a fake mask of ones to run clustering algorithm
+            mask = np.ones((n_data, 1))
+            group = np.arange(n_data)
+            maskedData = maskData(score, mask, group)
+            
+            outlier_vbPar[channel].update_local(maskedData)
+            assignmentTemp = np.argmax(outlier_vbPar[channel].rhat, axis=1)
+
+            cluster_id = np.zeros(score.shape[0], 'int16')  
+            for j in range(score.shape[0]):
+                cluster_id[j] = assignmentTemp[group[j]]
+
+            idx_triage = cluster_triage(outlier_vbPar[channel], score, 1000)
+            cluster_id = cluster_id[~idx_triage]
+            spike_time = spike_time[~idx_triage]
+
+            # gather clustering information into global variable
+            (global_spike_time,
+             global_cluster_id) = global_cluster_info(spike_time,
+                                                      cluster_id,
+                                                      global_spike_time,
+                                                      global_cluster_id)
+    spike_train = np.hstack(
+        (global_spike_time[:, np.newaxis],
+        global_cluster_id[:, np.newaxis]))
+
+    # sort based on spike_time
+    idx_sort = np.argsort(spike_train[:, 0])
+
+    return spike_train[idx_sort]
+                                            
+            
+
+                                                          
 def run_cluster_location(scores, spike_times, CONFIG):
     """
     run clustering algorithm using MFM and location features
-
     Parameters
     ----------
     scores: list (n_channels)
         A list such that scores[c] contains all scores whose main
         channel is c
-
     spike_times: list (n_channels)
         A list such that spike_index[c] cointains all spike times
         whose channel is c
-
     CONFIG: class
         configuration class
-
     Returns
     -------
     spike_train: np.array (n_data, 2)
@@ -160,9 +207,13 @@ def run_cluster_location(scores, spike_times, CONFIG):
     logger = logging.getLogger(__name__)
 
     n_channels = len(scores)
-    global_spike_time = np.zeros(0).astype('uint16')
+    global_spike_time = np.zeros(0).astype('uint32')
     global_cluster_id = np.zeros(0).astype('uint16')
-
+    outlier_st = []
+    outlier_clusterid = []
+    outlier_vbPar = []
+    outlier_scores = []
+    
     # run clustering algorithm per main channel
     for channel in range(n_channels):
 
@@ -176,17 +227,28 @@ def run_cluster_location(scores, spike_times, CONFIG):
 
             # make a fake mask of ones to run clustering algorithm
             mask = np.ones((n_data, 1))
-            #group = groups[channel]
             group = np.arange(n_data)
-            cluster_id = spikesort(score, mask,
+            
+#             CONFIG.cluster_prior.mu = np.mean(score,axis = 0)
+#             print(CONFIG.cluster_prior.mu)
+#             CONFIG.cluster_prior.V = np.zeros([5,5])
+            
+#             CONFIG.cluster_prior.V[np.ix_([0,2],[0,2])] = np.cov(score[:,:2,0])
+#             CONFIG.cluster_prior.V[np.ix_([2,5],[2,5])] = np.cov(score[:,2:,0])
+            
+            
+            cluster_id, vbParam = spikesort(score, mask,
                                    group, CONFIG)
-
+            
+            outlier_st += [spike_time]
+            outlier_clusterid += [cluster_id]
+            outlier_vbPar += [vbParam] 
+            outlier_scores += [score]
+            
             idx_triage = (cluster_id == -1)
 
             cluster_id = cluster_id[~idx_triage]
             spike_time = spike_time[~idx_triage]
-            if np.sum(idx_triage) != n_data:
-                cluster_id = clean_empty_cluster(cluster_id)
 
             # gather clustering information into global variable
             (global_spike_time,
@@ -194,6 +256,8 @@ def run_cluster_location(scores, spike_times, CONFIG):
                                                       cluster_id,
                                                       global_spike_time,
                                                       global_cluster_id)
+            
+            
 
     # make spike train
     spike_train = np.hstack(
@@ -203,7 +267,7 @@ def run_cluster_location(scores, spike_times, CONFIG):
     # sort based on spike_time
     idx_sort = np.argsort(spike_train[:, 0])
 
-    return spike_train[idx_sort]
+    return spike_train[idx_sort], outlier_vbPar
 
 
 def global_cluster_info(spike_time, cluster_id,
@@ -264,17 +328,3 @@ def global_cluster_info(spike_time, cluster_id,
         cluster_id + cluster_id_max + 1])
 
     return (global_spike_time, global_cluster_id)
-
-
-def clean_empty_cluster(cluster_id):
-    Ks = np.unique(cluster_id)
-
-    if Ks.shape[0] == np.max(Ks)+1:
-        return cluster_id
-
-    else:
-        cluster_id_new = np.zeros(cluster_id.shape[0], 'int16')
-        for j,k in enumerate(Ks):
-            cluster_id_new[cluster_id==k] = j
-
-        return cluster_id_new

@@ -38,7 +38,7 @@ def calculate_temp_temp(temporal_features, spatial_features):
         for j2 in range(n_features):
             for s1 in range(n_shifts):
                 for s2 in range(n_shifts):
-		    print ('temp_temp: ',j1, '/', n_features, '  ', j2, '/', n_features, '   ', s1,'/', n_shifts,'   ', s2, '/', n_shifts, '   ',datetime.datetime.now().strftime('%H:%M:%S'))
+                    print ('temp_temp: ',j1, '/', n_features, '  ', j2, '/', n_features, '   ', s1,'/', n_shifts,'   ', s2, '/', n_shifts, '   ',datetime.datetime.now().strftime('%H:%M:%S'))
                     temp1 = temporal_features[:, s1, :, j1]
                     temp2 = np.flip(temporal_features[:, s2, :, j2], 1)
                     spat1 = spatial_features[:, s1, j1]
@@ -63,18 +63,19 @@ def calculate_temp_temp_parallel(templates_selected, temporal_features, spatial_
         for j2 in range(n_features):
             for s1 in range(n_shifts):
                 for s2 in range(n_shifts):
-		    print (' temp_temp loop indexes: ',j1, '/', n_features-1, '  ', j2, '/', n_features-1, '   ', s1,'/', n_shifts-1,'   ', s2, '/', n_shifts-1, '   ',datetime.datetime.now().strftime('%H:%M:%S'))
+                    print (' temp_temp loop indexes: ',j1, '/', n_features-1, '  ', j2, '/', n_features-1, '   ', s1,'/', n_shifts-1,'   ', s2, '/', n_shifts-1, '   ',datetime.datetime.now().strftime('%H:%M:%S'))
                     temp1 = temporal_features[:, s1, :, j1]
                     temp2 = np.flip(temporal_features[templates_selected][:, s2, :, j2], 1)
                     spat1 = spatial_features[:, s1, j1]
                     spat2 = spatial_features[templates_selected][:, s2, j2]
 		    
-		    temporal_conv*=0
-		    #print temporal_conv.shape
-		    for k in range(n_templates):
-		    	for k2 in range(len(templates_selected)):
-			    temporal_conv[:, k, k2] = np.convolve(temp2[k2], temp1[k]).T
+                    temporal_conv*=0
+                    #print temporal_conv.shape
+                    for k in range(n_templates):
+                        for k2 in range(len(templates_selected)):
+                            temporal_conv[:, k, k2] = np.convolve(temp2[k2], temp1[k]).T
                     temp_temp[:, :, s1, s2] += np.transpose(temporal_conv*np.matmul(spat1, spat2.T)[np.newaxis], (1, 2, 0))
+            
     return temp_temp
     
     
