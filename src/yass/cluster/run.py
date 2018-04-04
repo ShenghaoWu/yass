@@ -9,7 +9,7 @@ from yass.cluster.triage import triage
 from yass.cluster.coreset import coreset
 from yass.cluster.mask import getmask
 from yass.cluster.util import run_cluster, run_cluster_location
-
+import scipy.io as sio
 
 def run(scores, spike_index):
     """Spike clustering
@@ -47,7 +47,7 @@ def run(scores, spike_index):
     # transform data structure of scores and spike_index
     scores, spike_index = make_list(scores, spike_index,
                                     CONFIG.recordings.n_channels)
-
+    
     ##########
     # Triage #
     ##########
@@ -57,12 +57,15 @@ def run(scores, spike_index):
     score, spike_index = triage(scores, spike_index,
                                 CONFIG.triage.nearest_neighbors,
                                 CONFIG.triage.percent)
+    
+    
 
     logger.info("Randomly subsampling...")
     scores, spike_index = random_subsample(scores, spike_index,
                                            CONFIG.clustering.max_n_spikes)
     Time['t'] += (datetime.datetime.now()-_b).total_seconds()
 
+    sio.savemat('isosplit.mat',{'score': score, 'spike_index': spike_index})
     if CONFIG.clustering.clustering_method == 'location':
         ##############
         # Clustering #

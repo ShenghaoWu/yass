@@ -828,10 +828,12 @@ def birth_move(maskedData, vbParam, suffStat, param, L):
         suffStatPrime = suffStatistics(maskedDataPrime, vbParamPrime)
         vbParamPrime.update_global(suffStatPrime, param)
 
-    temp = vbParamPrime.rhat * maskedDataPrime.weight[:, np.newaxis]
-    goodK = ((np.sum(temp, axis=0) / np.sum(maskedDataPrime.weight)) >
-             (1.0 / (extraK * 2)))
+#     temp = vbParamPrime.rhat * maskedDataPrime.weight[:, np.newaxis]
+#     goodK = ((np.sum(temp, axis=0) / np.sum(maskedDataPrime.weight)) >
+#              (1.0 / (extraK * 2)))
+    goodK = np.ones(vbParamPrime.ahat.shape[0], dtype = 'bool')
     Nbirth = np.sum(goodK)
+    
     if Nbirth >= 1:
         vbParam.ahat = np.concatenate(
             (vbParam.ahat, vbParamPrime.ahat[goodK]), axis=0)
@@ -999,7 +1001,7 @@ def split_merge(maskedData, param):
     vbParam, suffStat = init_param(maskedData, 1, param)
     iter = 0
     L = np.ones([1])
-    n_iter = 1
+    n_iter = 10
     extra_iter = 5
     k_max = 1
     while iter < n_iter:
