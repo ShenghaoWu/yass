@@ -1,12 +1,13 @@
 import os
 import logging
 import datetime
+import numpy as np
 
 from yass import read_config
 from yass.templates.util import get_and_merge_templates as gam_templates
 from yass.templates.clean import clean_up_templates
 
-def run(spike_train, output_directory='tmp/',
+def run(spike_train, scores, output_directory='tmp/',
         recordings_filename='standarized.bin'):
     """(TODO add missing documentation)
 
@@ -51,10 +52,18 @@ def run(spike_train, output_directory='tmp/',
                                       recordings_filename)
     merge_threshold = CONFIG.templates.merge_threshold
 
+    #n_templates = np.max(spike_train[:,1]) + 1
+    #cluster_center = np.zeros((n_templates,2))
+    #for k in range(n_templates):
+    #    cluster_center[k] = np.mean(scores[spike_train[:,1]==k,:2],0)
+    #nearby_units = np.linalg.norm(cluster_center[np.newaxis] -
+    #                              cluster_center[:, np.newaxis], axis=2) < 70
+    nearby_units = 0
+    
     spike_train, templates = gam_templates(
         spike_train, path_to_recordings, CONFIG.resources.max_memory,
-        CONFIG.spikeSize, CONFIG.templatesMaxShift,
-        merge_threshold, CONFIG.neighChannels)
+        nearby_units, CONFIG.spike_size, CONFIG.templates_max_shift,
+        merge_threshold)
 
     snr_threshold = 2
     duplicate_threshold = 0.9

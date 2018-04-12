@@ -13,10 +13,11 @@ def clean_up_templates(spike_train, templates, geometry,
     
     # template code: '0' clean template, '1' overly spread template,
     # '2' collided template
-    template_code = np.zeros((n_templates), 'int16')
+    #template_code = np.zeros((n_templates), 'int16')
 
     # check for overly spread template first
     too_spread = np.zeros(n_templates, 'bool')
+    spread = np.zeros(n_templates)
     for k in range(n_templates):
         
         idx_c = energy[:, k] > np.max(energy[:, k])*0.5
@@ -24,19 +25,24 @@ def clean_up_templates(spike_train, templates, geometry,
             center = np.average(geometry[idx_c], axis=0, weights=energy[idx_c,k])
             lam, V = np.linalg.eig(np.cov(geometry[idx_c].T, aweights=energy[idx_c,k]))
             lam[lam<0] = 0
+            spread[k] = np.sqrt(np.max(lam)) 
             if np.sqrt(np.max(lam)) > spread_threshold:
                 too_spread[k] = 1
+                
+    
+    return too_spread, spread
 
+"""
     templates_good = templates[:,:,~too_spread]
     templates_bad = templates[:,:,too_spread]
     template_code[too_spread] = 1
-
+    
     bad_energy = np.max(templates_bad, 1) - np.min(templates_bad, 1)
     bad_energy[bad_energy < 0.5*np.max(bad_energy, 0)[np.newaxis]] = 0
     good_energy = np.max(templates_good, 1) - np.min(templates_good, 1)
     good_energy[good_energy < 0.5*np.max(good_energy, 0)[np.newaxis]] = 0
     cross_energy = np.matmul(bad_energy.T, good_energy)
-
+    
     # try to make overly spread templates using good ones.
     mid_t = int((temporal_size-1)/2)
     built_templates = np.zeros(templates_bad.shape)
@@ -89,3 +95,5 @@ def clean_up_templates(spike_train, templates, geometry,
     idx_sort = np.argsort(spike_train_new[:, 0])
     
     return spike_train_new[idx_sort], templates_new, template_code_new, original_order[idx_sort]
+"""
+    

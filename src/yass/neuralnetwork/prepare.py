@@ -97,16 +97,17 @@ def prepare_nn(channel_index, whiten_filter,
     # remove uncentered spike index
     # if the energy in the main channel is less than
     # neighoring channels, it is uncentered
-    (score_keep_tf, wf_keep_tf,
-     spike_index_keep_tf) = remove_uncetered(score_tf,
-                                             waveform_tf,
-                                             spike_index_tf)
+    #rot = NNAE.load_rotation()
+    nneigh = NND.filters_dict['n_neighbors']
+    #(score_keep_tf, wf_keep_tf,
+    # spike_index_keep_tf) = remove_uncetered(score_tf,
+    #                                         waveform_tf,
+    #                                         spike_index_tf)
 
     # run neural net triage
-    #nneigh = NND.filters_dict['n_neighbors']
-    idx_clean = NNT.triage_wf(wf_keep_tf, threshold_triage)
-    score_clear_tf = tf.boolean_mask(score_keep_tf, idx_clean)
-    spike_index_clear_tf = tf.boolean_mask(spike_index_keep_tf,
+    idx_clean = NNT.triage_wf(waveform_tf[:, :, :nneigh], threshold_triage)
+    score_clear_tf = tf.boolean_mask(score_tf, idx_clean)
+    spike_index_clear_tf = tf.boolean_mask(spike_index_tf,
                                            idx_clean)
 
     # whiten score
@@ -115,7 +116,126 @@ def prepare_nn(channel_index, whiten_filter,
     #                                            whiten_filter)
 
     # gather all output tensors
-    output_tf = (score_clear_tf, spike_index_clear_tf, spike_index_tf)
+    output_tf = (score_tf, spike_index_tf, spike_index_tf)
+    
+    return x_tf, output_tf, NND, NNAE, NNT
+
+
+def prepare_nn2(channel_index, whiten_filter,
+               threshold_detect, threshold_triage,
+               detector_filename,
+               autoencoder_filename,
+               triage_filename):
+
+    """Prepare neural net tensors in advance. This is to effciently run
+    neural net with batch processor as we don't have to recreate tf
+    tensors in every batch
+
+    Parameters
+    ----------
+    channel_index: np.array (n_channels, n_neigh)
+        Each row indexes its neighboring channels.
+        For example, channel_index[c] is the index of
+        neighboring channels (including itself)
+        If any value is equal to n_channels, it is nothing but
+        a space holder in a case that a channel has less than
+        n_neigh neighboring channels
+
+    whiten_filter: numpy.ndarray (n_channels, n_neigh, n_neigh)
+        whitening matrix such that whiten_filter[c] is the whitening
+        filter of channel c and its neighboring channel determined from
+        channel_index.
+
+    threshold_detect: int
+        threshold for neural net detection
+
+    threshold_triage: int
+        threshold for neural net triage
+
+    detector_filename: str
+        location of trained neural net detectior
+
+    autoencoder_filename: str
+        location of trained neural net autoencoder
+
+    triage_filename: str
+        location of trained neural net triage
+
+    Returns
+    -------
+    x_tf: tf.tensors (n_observations, n_channels)
+        placeholder of recording for running tensorflow
+
+    output_tf: tuple of tf.tensors
+        a tuple of tensorflow tensors that produce score, spike_index_clear,
+        and spike_index_collision
+
+    NND: class
+        an instance of class, NeuralNetDetector
+
+    NNT: class
+        an instance of class, NeuralNetTriage
+    """
+
+    # placeholder for input recording
+    x_tf = tf.placeholder("float", [None, None])
+
+    # load Neural Net's
+    NND = NeuralNetDetector(detector_filename)
+    NNAE = AutoEncoder(autoencoder_filename)
+    NNT = NeuralNetTriage(triage_filename)
+
+    # check if number of neighboring channel in nn matches with
+    # channel index
+    #if channel_index.shape[1] != NND.filters_dict['n_neighbors']:
+    #    raise ValueError('Number of neighboring channels from neighbors is {} '
+    #                     'but the trained Neural Net expects {} neighbors,'
+    #                     'they must match'
+    #                     .format(channel_index.shape[1],
+    #                             NND.filters_dict['n_neighbors']))
+
+    # make spike_index tensorflow tensor
+    spike_index_tf_all = NND.make_detection_tf_tensors(x_tf,
+                                                       channel_index,
+                                                       threshold_detect)
+
+    # remove edge spike time
+    spike_index_tf = remove_edge_spikes(x_tf, spike_index_tf_all,
+                                        NND.filters_dict['size'])
+
+    # make waveform tensorflow tensor
+    waveform_tf = make_waveform_tf_tensor(x_tf,
+                                          spike_index_tf,
+                                          channel_index,
+                                          NND.filters_dict['size'])
+
+    # make score tensorflow tensor from waveform
+    score_tf = NNAE.make_score_tf_tensor(waveform_tf)
+
+    # remove uncentered spike index
+    # if the energy in the main channel is less than
+    # neighoring channels, it is uncentered
+    #rot = NNAE.load_rotation()
+    nneigh = NND.filters_dict['n_neighbors']
+    #(score_keep_tf, wf_keep_tf,
+    # spike_index_keep_tf) = remove_uncetered(score_tf,
+    #                                         waveform_tf,
+    #                                         spike_index_tf)
+
+    # run neural net triage
+    idx_clean = NNT.triage_wf(waveform_tf[:, :, :nneigh], threshold_triage)
+    #score_clear_tf = tf.boolean_mask(score_tf, idx_clean)
+    #spike_index_clear_tf = tf.boolean_mask(spike_index_tf,
+    #                                       idx_clean)
+
+    # whiten score
+    #whiten_score_clear_tf = make_whitened_score(score_clear_tf,
+    #                                            spike_index_clear_tf[:, 1],
+    #                                            whiten_filter)
+
+    # gather all output tensors
+    output_tf = (score_tf, spike_index_tf, idx_clean)
+    
     return x_tf, output_tf, NND, NNAE, NNT
 
 
@@ -175,12 +295,18 @@ def remove_uncetered(score_tf, waveform_tf, spike_index_tf):
 
         tf tensors after screening out uncentered ones
     """
-
-    # calculate energy for each spike for each data
-    energy_tf = tf.reduce_sum(tf.square(score_tf), 1)
+    
+    wf_shapes = tf.shape(waveform_tf, out_type='int64')
+    
+    abs_wf_tf = tf.abs(waveform_tf)
+    energy_tf = tf.reduce_max(abs_wf_tf, 1)
+    loc_max = tf.argmax(abs_wf_tf[:, :, 0], 1)
+    
     # it is centered if the energy is highest at the first channel index
-    idx_centered = energy_tf[:, 0] > 0.7*tf.reduce_max(energy_tf, 1)
-
+    #idx_centered = energy_tf[:, 0] > 0.7*tf.reduce_max(energy_tf, 1)
+    idx_centered = tf.logical_and(tf.equal(tf.argmax(energy_tf, 1), 0),
+                                  tf.logical_and(loc_max > 0, loc_max < wf_shapes[2]))
+    
     # keep oinly good ones
     wf_keep_tf = tf.boolean_mask(waveform_tf, idx_centered)
     score_keep_tf = tf.boolean_mask(score_tf, idx_centered)

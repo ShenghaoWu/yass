@@ -46,51 +46,33 @@ def run(scores, spike_index):
 
     logger = logging.getLogger(__name__)
 
-    # transform data structure of scores and spike_index
-    scores, spike_index = make_list(scores, spike_index,
-                                    CONFIG.recordings.n_channels)
-
     ##########
     # Triage #
     ##########
 
     _b = datetime.datetime.now()
     logger.info("Triaging...")
-    score, spike_index = triage(scores, spike_index,
+    print(scores.shape)
+    scores, spike_index = random_subsample(scores, spike_index,
+                                       CONFIG.cluster.max_n_spikes)
+    scores, spike_index = triage(scores, spike_index,
                                 CONFIG.cluster.triage.nearest_neighbors,
                                 CONFIG.cluster.triage.percent)
-
-    logger.info("Randomly subsampling...")
-    scores, spike_index = random_subsample(scores, spike_index,
-                                           CONFIG.cluster.max_n_spikes)
+    print(scores.shape)
     Time['t'] += (datetime.datetime.now()-_b).total_seconds()
 
     if CONFIG.cluster.method == 'location':
+        
         ##############
         # Clustering #
         ##############
         _b = datetime.datetime.now()
         logger.info("Clustering...")
-        spike_train = run_cluster_location(scores,
-                                           spike_index, CONFIG)
+        vbParam, tmp_loc, score, spike_index = run_cluster_location(
+            scores, spike_index, CONFIG)
         Time['s'] += (datetime.datetime.now()-_b).total_seconds()
 
     else:
-
-        ##########
-        # Triage #
-        ##########
-
-        _b = datetime.datetime.now()
-        logger.info("Triaging...")
-        scores, spike_index = triage(scores, spike_index,
-                                    CONFIG.triage.nearest_neighbors,
-                                    CONFIG.triage.percent)
-
-        logger.info("Randomly subsampling...")
-        scores, spike_index = random_subsample(scores, spike_index,
-                                               CONFIG.clustering.max_n_spikes)
-        Time['t'] += (datetime.datetime.now()-_b).total_seconds()
 
         ###########
         # Coreset #
@@ -118,11 +100,14 @@ def run(scores, spike_index):
         logger.info("Clustering...")
         channel_index = make_channel_index(CONFIG.neigh_channels,
                                            CONFIG.geom)
-        spike_train = run_cluster(scores, masks, groups,
-                                  spike_index, CONFIG.channel_groups,
-                                  channel_index,
-                                  CONFIG.detect.temporal_features,
-                                  CONFIG)
+        spike_train, _, _ = run_cluster(scores, masks, groups,
+                                        spike_index, 
+                                        CONFIG.channel_groups,
+                                        channel_index,
+                                        CONFIG.detect.temporal_features,
+                                        CONFIG)
+        vbParam = 0
+        tmp_loc = 0
         Time['s'] += (datetime.datetime.now()-_b).total_seconds()
 
     # report timing
@@ -134,4 +119,4 @@ def run(scores, spike_index):
     logger.info("\tmasking:\t{0} seconds".format(Time['m']))
     logger.info("\tclustering:\t{0} seconds".format(Time['s']))
 
-    return spike_train, scores
+    return vbParam, tmp_loc, score, spike_index

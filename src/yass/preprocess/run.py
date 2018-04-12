@@ -106,7 +106,7 @@ def run(output_directory='tmp/', if_file_exists='skip'):
                                          OUTPUT_DTYPE,
                                          if_file_exists=if_file_exists)
 
-    channel_index = make_channel_index(CONFIG.neighChannels,
+    channel_index = make_channel_index(CONFIG.neigh_channels,
                                        CONFIG.geom, 2)
     
     # Whiten

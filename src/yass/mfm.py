@@ -720,8 +720,12 @@ def init_param(maskedData, K, param):
 
     """
     N, nfeature, nchannel = maskedData.sumY.shape
+    
+    data = np.copy(maskedData.meanY.reshape(
+        [N, nfeature * nchannel], order='F').T)
+    data /= np.std(data,1)[:, np.newaxis]
     allocation = weightedKmeansplusplus(
-        maskedData.meanY.reshape([N, nfeature * nchannel], order='F').T,
+        data,
         maskedData.weight, K)
 
     if N < K:
@@ -792,27 +796,17 @@ def birth_move(maskedData, vbParam, suffStat, param, L):
     L[kpicked] = 1
 
     # Creation
-
     maskedDataPrime = maskData()
-    if idx.shape[0] > 0:
-        maskedDataPrime.sumY = maskedData.sumY[idx, :, :]
-        maskedDataPrime.sumYSq = maskedData.sumYSq[idx, :, :, :]
-        maskedDataPrime.sumEta = maskedData.sumEta[idx, :, :, :]
-        maskedDataPrime.groupMask = maskedData.groupMask[idx, :]
-        maskedDataPrime.weight = maskedData.weight[idx]
-        maskedDataPrime.meanY = maskedData.meanY[idx, :, :]
-        maskedDataPrime.meanEta = maskedData.meanEta[idx, :, :, :]
-    elif idx.shape[0] == 1:
-        maskedDataPrime.sumY = maskedData.sumY[idx:(idx + 1), :, :]
-        maskedDataPrime.sumYSq = maskedData.sumYSq[idx:(idx + 1), :, :, :]
-        maskedDataPrime.sumEta = maskedData.sumEta[idx:(idx + 1), :, :, :]
-        maskedDataPrime.groupMask = maskedData.groupMask[idx:(idx + 1), :]
-        maskedDataPrime.weight = maskedData.weight[idx:(idx + 1)]
-        maskedDataPrime.meanY = maskedData.meanY[idx:(idx + 1), :, :]
-        maskedDataPrime.meanEta = maskedData.meanEta[idx:(idx + 1), :, :, :]
+    maskedDataPrime.sumY = maskedData.sumY[idx, :, :]
+    maskedDataPrime.sumYSq = maskedData.sumYSq[idx, :, :, :]
+    maskedDataPrime.sumEta = maskedData.sumEta[idx, :, :, :]
+    maskedDataPrime.groupMask = maskedData.groupMask[idx, :]
+    maskedDataPrime.weight = maskedData.weight[idx]
+    maskedDataPrime.meanY = maskedData.meanY[idx, :, :]
+    maskedDataPrime.meanEta = maskedData.meanEta[idx, :, :, :]
     vbParamPrime, suffStatPrime = init_param(maskedDataPrime, extraK, param)
 
-    for iter_creation in range(3):
+    for iter_creation in range(10):
         vbParamPrime.update_local(maskedDataPrime)
         suffStatPrime = suffStatistics(maskedDataPrime, vbParamPrime)
         vbParamPrime.update_global(suffStatPrime, param)
@@ -954,41 +948,37 @@ def check_merge(maskedData, vbParam, suffStat, ka, kb, param, L, ELBO):
 
 
 def spikesort(score, mask, group, param):
+    maskedData = maskData(score, mask, group)
 
-    if score.shape[0] > 1:
-        maskedData = maskData(score, mask, group)
+    vbParam = split_merge(maskedData, param)
 
-        vbParam = split_merge(maskedData, param)
+    #assignmentTemp = np.argmax(vbParam.rhat, axis=1)
 
-        assignmentTemp = np.argmax(vbParam.rhat, axis=1)
+    #assignment = np.zeros(score.shape[0], 'int16')
+    #for j in range(score.shape[0]):
+    #    assignment[j] = assignmentTemp[group[j]]
 
-        assignment = np.zeros(score.shape[0], 'int16')
-        for j in range(score.shape[0]):
-            assignment[j] = assignmentTemp[group[j]]
-
-        idx_triage = cluster_triage(vbParam, score, 20)
-        assignment[idx_triage] = -1
-    else:
-        assignment = np.zeros(1, 'int16')
+    #idx_triage = cluster_triage(vbParam, score, 20)
+    #assignment[idx_triage] = -1
         
-    return assignment, vbParam
-
+    #return assignment, vbParam
+    return vbParam
 
 def split_merge(maskedData, param):
     vbParam, suffStat = init_param(maskedData, 1, param)
     iter = 0
     L = np.ones([1])
-    n_iter = 10
+    n_iter = 5
     extra_iter = 5
     k_max = 1
     while iter < n_iter:
         iter += 1
         vbParam, suffStat, L = birth_move(maskedData, vbParam, suffStat, param,
                                           L)
-        # print('birth',vbParam.rhat.shape[1])
+        #print('birth',vbParam.rhat.shape[1])
         vbParam, suffStat, L = merge_move(maskedData, vbParam, suffStat, param,
                                           L, 0)
-        # print('merge',vbParam.rhat.shape[1])
+        #print('merge',vbParam.rhat.shape[1])
 
         k_now = vbParam.rhat.shape[1]
         if (k_now > k_max) and (iter + extra_iter > n_iter):
@@ -1002,6 +992,65 @@ def split_merge(maskedData, param):
 
 
 def cluster_triage(vbParam, score, threshold):
+    
+    maha = calc_mahalonobis(vbParam, score)
+    
+    cluster_id = np.argmin(maha, axis=1)
+    idx = np.any(np.all(maha >= threshold, axis=1), axis=1)
+    cluster_id[idx] = -1
+    return cluster_id
+
+
+def get_core_data(vbParam, score, n_max, threshold):
+    
+    maha = calc_mahalonobis(vbParam, score)
+    cluster_id = np.argmin(maha, axis=1)
+    
+    n_data, n_units = maha.shape
+    core_data = np.zeros((0,2), 'int32')
+    for k in range(n_units):
+        idx_unit = np.where(np.logical_and(
+            cluster_id==k, maha[:,k] < threshold))[0]
+        if idx_unit.shape[0] > n_max:
+            core_idx = idx_unit[
+                np.argsort(maha[idx_unit,k])[:n_max]]
+        else:
+            core_idx = idx_unit
+
+        core_data = np.vstack(
+            (core_data,
+             np.hstack((core_idx[:,np.newaxis],
+                        np.ones((core_idx.shape[0], 1),
+                                'int32')*k))
+            ))
+        
+    return core_data
+
+def get_core_data2(vbParam, score, n_max, threshold):
+    
+    n_data = vbParam.rhat.shape[0]
+    n_units = int(np.max(vbParam.rhat[:, 1]) + 1)
+    
+    idx_keep = np.zeros(n_data, 'bool')
+    for k in range(n_units):
+        idx_data = np.where(vbParam.rhat[:, 1] == k)[0]
+        
+        score_k = score[vbParam.rhat[idx_data, 0].astype('int32')]
+        prec = vbParam.Vhat[:, :, k, 0]*vbParam.nuhat[k]
+        mu = vbParam.muhat[:, k, 0][np.newaxis]
+        score_mu = score_k - mu
+        maha = np.sqrt(np.sum(np.matmul(score_mu, prec)*score_mu, 1))
+        
+        idx_data = idx_data[maha < threshold]
+        
+        if idx_data.shape[0] > n_max:
+            idx_data = np.random.choice(idx_data, n_max, replace=False)
+    
+        idx_keep[idx_data] = 1
+        
+    return idx_keep
+
+def calc_mahalonobis(vbParam, score):
     prec = np.transpose(
         vbParam.Vhat * vbParam.nuhat[np.newaxis, np.newaxis, :, np.newaxis],
         axes=[2, 3, 0, 1])
@@ -1014,8 +1063,9 @@ def cluster_triage(vbParam, score, threshold):
                 scoremhat[:, :, :, :, np.newaxis]),
             axis=(3, 4),
             keepdims=False))
-    idx = np.any(np.all(maha >= threshold, axis=1), axis=1)
-    return idx
+    
+    return maha[:, :, 0]
+    
 
 
 def merge_move_quick(maskedData, vbParam, cluster_id, param):
