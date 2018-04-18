@@ -80,6 +80,8 @@ def run(scores, spike_index):
         logger.info("Clustering...")
         spike_train, outlier_vbPar = run_cluster_location(scores_subsampled, spike_index_subsampled, CONFIG)
         Time['s'] += (datetime.datetime.now()-_b).total_seconds()
+        
+        np.save(CONFIG.data.root_folder+ "tmp/spike_train_clear_subsampled", spike_train)
 
         spike_train_excluded = recover_clear_spikes(scores_excluded, spike_index_excluded, outlier_vbPar)
         print (spike_train_excluded.shape)

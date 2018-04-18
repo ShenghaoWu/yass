@@ -163,7 +163,8 @@ def recover_clear_spikes(scores, spike_times, outlier_vbPar):
             for j in range(score.shape[0]):
                 cluster_id[j] = assignmentTemp[group[j]]
 
-            idx_triage = cluster_triage(outlier_vbPar[channel], score, 1000)
+            #idx_triage = cluster_triage(outlier_vbPar[channel], score, 1000)
+            idx_triage = cluster_triage(outlier_vbPar[channel], score, 10)   #Cat changed back to a lower value;
             cluster_id = cluster_id[~idx_triage]
             spike_time = spike_time[~idx_triage]
 

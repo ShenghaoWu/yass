@@ -7,7 +7,7 @@ import os.path as path
 import time
 
 from yass.deconvolute.util import svd_shifted_templates, small_shift_templates, make_spt_list, make_spt_list_parallel, clean_up, calculate_temp_temp_parallel
-from yass.deconvolute.deconvolve import deconvolve_new_allcores, fix_indexes
+from yass.deconvolute.deconvolve import deconvolve_new_allcores_updated, fix_indexes
 from yass import read_config
 from yass.batch import BatchProcessor
 
@@ -189,26 +189,22 @@ def run(spike_index, templates,
         n_processors = CONFIG.resources.n_processors
         n_channels = CONFIG.recordings.n_channels  
         n_parallel_chunks = CONFIG.resources.n_parallel_chunks
+        sampling_rate = CONFIG.recordings.sampling_rate
+        n_sec_chunk = CONFIG.resources.n_sec_chunk
 
         buffer_size=2*n_temporal_big+n_explore
 
-        #n_parallel_chunks = 600
-        indexes = np.linspace(0,fp_len, n_processors*n_parallel_chunks+1)/n_channels
-        #indexes = np.arange(0,fp_len, 20000)
-        #print indexes
+        indexes = np.arange(0,fp_len/n_channels,sampling_rate*n_sec_chunk)
+        if indexes[-1] != fp_len/n_channels:
+            indexes = np.hstack((indexes, fp_len/n_channels))
 
         idx_list = []
         for k in range(len(indexes)-1):
             idx_list.append([indexes[k],indexes[k+1],buffer_size, indexes[k+1]-indexes[k]+buffer_size])
-        #idx_list.append([indexes[k+1],fp_len,buffer_size, fp_len-indexes[k+1]+buffer_size])
-        
-        idx_list = np.int32(np.vstack(idx_list))
-        #print idx_list	
 
-        if n_processors==0:
-            print ("# of chunks: ", len(idx_list), " # cores: ", 1)
-        else:
-            print ("# of chunks: ", len(idx_list), " # cores: ", n_processors)
+        idx_list = np.int64(np.vstack(idx_list))
+        print (idx_list)
+        print ("# of chunks: ", len(idx_list))
         
         #************************************************************************************************************
         #****************************************f********************************************************************
@@ -219,11 +215,12 @@ def run(spike_index, templates,
             start_time = time.time()
             print ("Start time for deconvolution: ", datetime.datetime.now().strftime('%H:%M:%S'))
 
+            #Make list of indexes
             proc_indexes = np.arange(len(idx_list))
 
-            #****************************************************************************************************
-
-            spike_trains = parmap.map(deconvolve_new_allcores, zip(idx_list,proc_indexes), filename_bin, path_to_spt_list, path_to_temp_temp, path_to_shifted_templates, buffer_size, n_channels, temporal_features, spatial_features, n_explore, threshold_d, processes=n_processors)
+            #Run parallel function
+            #spike_trains = parmap.map(deconvolve_new_allcores, zip(idx_list,proc_indexes), filename_bin, path_to_spt_list, path_to_temp_temp, path_to_shifted_templates, buffer_size, n_channels, temporal_features, spatial_features, n_explore, threshold_d, processes=n_processors)
+            spike_trains = parmap.map(deconvolve_new_allcores_updated, zip(idx_list,proc_indexes), filename_bin, path_to_spt_list, path_to_temp_temp, path_to_shifted_templates, buffer_size, n_channels, temporal_features, spatial_features, n_explore, threshold_d, processes=n_processors)
 
             #****************************************************************************************************
             
@@ -236,7 +233,9 @@ def run(spike_index, templates,
                 start_time = time.time()
                 print ("..iteration: ", k)
                 
-                spike_trains.append(deconvolve_new_allcores([idx_list[k],k], filename_bin, path_to_spt_list, path_to_temp_temp, path_to_shifted_templates, buffer_size, n_channels, temporal_features, spatial_features, n_explore, threshold_d))
+                #spike_trains.append(deconvolve_new_allcores([idx_list[k],k], filename_bin, path_to_spt_list, path_to_temp_temp, path_to_shifted_templates, buffer_size, n_channels, temporal_features, spatial_features, n_explore, threshold_d))
+                spike_trains.append(deconvolve_new_allcores_updated([idx_list[k],k], filename_bin, path_to_spt_list, path_to_temp_temp, path_to_shifted_templates, buffer_size, n_channels, temporal_features, spatial_features, n_explore, threshold_d))
+                
                 
                 print ("Single batch of deconvolfution: ", time.time()-start_time, " total from start: ", time.time()-total_time)
 

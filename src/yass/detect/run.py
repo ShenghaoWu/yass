@@ -207,7 +207,7 @@ def run_neural_network(standarized_path, standarized_params,
                             CONFIG.resources.max_memory,
                             buffer_size=CONFIG.spikeSize)
 
-	#print "Making tensorflow tensors"
+	    #print "Making tensorflow tensors"
         # make tensorflow tensors and neural net classes
         detection_th = CONFIG.neural_network_detector.threshold_spike
         triage_th = CONFIG.neural_network_triage.threshold_collision

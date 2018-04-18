@@ -104,11 +104,11 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
 
     #Save o_layer
     if False:
-	path_to_olayer = path.join(TMP_FOLDER, 'o_layer.bin')
-	if os.path.exists(path_to_olayer):
-	    pass
-	else:
-	    o_path, o_params = get_o_layer(standarized_path, standarized_params)
+        path_to_olayer = path.join(TMP_FOLDER, 'o_layer.bin')
+        if os.path.exists(path_to_olayer):
+            pass
+        else:
+            o_path, o_params = get_o_layer(standarized_path, standarized_params)
 
 
     # detect

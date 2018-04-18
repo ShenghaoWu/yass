@@ -8,6 +8,361 @@ import time
 #********************************************************************************************************************************************
 #********************************************************************************************************************************************
 #********************************************************************************************************************************************
+def deconvolve_new_allcores_updated(data_in, filename_bin, filename_spt_list, filename_temp_temp, filename_shifted_templates, buffer_size, n_channels, temporal_features, spatial_features, n_explore, threshold_d):
+    
+    start_time_chunk = time.time()
+
+    idx_list, chunk_idx = data_in[0], data_in[1]
+    #print idx_list, proc_idx
+
+    #prPurple("Loading data files for chunk: "+str(chunk_idx))
+
+    spt_list = np.load(filename_spt_list)
+    temp_temp = np.load(filename_temp_temp)
+    shifted_templates = np.load(filename_shifted_templates)
+
+    fname = os.path.split(filename_shifted_templates)[0]+'/spike_train_clear_after_merge.npy'
+    spike_train_clear = np.load(fname)
+
+    #print ("shifted_templates shape: ", shifted_templates.shape)
+
+    #New indexes
+    idx_start = idx_list[0]
+    idx_stop = idx_list[1]
+    idx_local = idx_list[2]
+    idx_local_end = idx_list[3]
+   
+    data_start = idx_start  #idx[0].start
+    data_end = idx_stop    #idx[0].stop
+    # get offset that will be applied
+    offset = idx_local   #idx_local[0].start
+
+
+    #************************************************************************************************************
+    #************************************* LOAD RAW RECORDING ***** ********************************************
+    #************************************************************************************************************
+    #print (data_start, data_end, offset)
+    #print ("   Chunk: ", chunk_idx, "  Loading : ", ((data_end-data_start)*4*n_channels)*1.E-6, "MB")
+    with open(filename_bin, "rb") as fin:
+	if data_start==0:
+	    # Seek position and read N bytes
+	    recordings_1D = np.fromfile(fin, dtype='float32', count=(data_end+buffer_size)*n_channels)
+	    recordings_1D = np.hstack((np.zeros(buffer_size*n_channels,dtype='float32'),recordings_1D))
+	else:
+	    fin.seek((data_start-buffer_size)*4*n_channels, os.SEEK_SET)         #Advance to idx_start but go back 
+	    recordings_1D =  np.fromfile(fin, dtype='float32', count=((data_end-data_start+buffer_size*2)*n_channels))	#Grab 2 x template_widthx2 buffers
+
+	if len(recordings_1D)!=((data_end-data_start+buffer_size*2)*n_channels):
+	    recordings_1D = np.hstack((recordings_1D,np.zeros(buffer_size*n_channels,dtype='float32')))
+
+    fin.close()
+
+    #print ("...data loading time: ", time.time()-start_time_chunk)
+    #print buffer_size
+    #print recordings_1D.shape
+    
+    #********************************************************************************************************************************************
+    #*************************************************** SETUP ARRAYS ***************************************************************************
+    #********************************************************************************************************************************************
+    #array_time = time.time()
+    rec_len = (data_end-data_start+buffer_size*2)		#Need rec_len in n_samples for below
+
+    #Convert to 2D array
+    recordings = recordings_1D.reshape(-1,n_channels)
+
+    n_templates, n_shifts, waveform_size, n_channels = shifted_templates.shape
+    R = int((waveform_size-1)/2)
+    R2 = int((waveform_size-1)/4)
+    principal_channels = np.argmax(np.max(np.abs(shifted_templates),(1,2)), 1)
+    
+    norms = np.sum(np.square(shifted_templates),(2,3))		#||V|| L2 norms (square of this) for the shifted templates 
+    visible_channels = np.max(np.abs(spatial_features), (1,2)) > np.min(np.max(np.abs(spatial_features), (1,2,3)))*0.5
+    temporal_features = temporal_features[:, :, R2:3*R2+1]
+    #print ("...array setup time: ", time.time()-array_time)
+
+    #print ("Total load time: ", time.time()-start_time_chunk)
+    
+    #*********************************************************************************************************************************************
+    #*********************************************************************************************************************************************
+    #*********************************************************************************************************************************************
+
+
+    #*********************************************************************************************************************************************
+    #******************************* MAKE D_MATRIX ***********************************************************************************************
+    #*********************************************************************************************************************************************
+    #prPurple("Making d_matrix...")
+    start_dmatrix = time.time()
+    #d_matrix = np.ones((recordings.shape[0],n_templates,n_shifts))*-np.Inf
+    #d_matrix = np.empty((recordings.shape[0],n_templates,n_shifts))*-np.Inf
+    d_matrix = np.full((recordings.shape[0],n_templates,n_shifts),-np.Inf)
+    #print ("...d_matrix make time: ", time.time()-start_dmatrix)
+
+    #*********************************************************************************************************************************************
+    #*********************************************************************************************************************************************
+    #*********************************************************************************************************************************************
+
+
+    #**************************************************************************************************************************************
+    #******************************* REMOVE CLEAR SPIKES **********************************************************************************
+    #**************************************************************************************************************************************
+    #prPurple("Clearing spikes...")
+    #spike_clearing_time=time.time()
+    
+    #Identify clear spikes in time window
+    indexes = np.logical_and(spike_train_clear[:,0]>=data_start, spike_train_clear[:,0]<=data_end)
+    clear_spiketimes = spike_train_clear[indexes]
+
+    #indexes_unique = np.unique(clear_spiketimes[:,0],return_index=True)[1]     #Used to also remove any spike times falling within same time window (regardless of template)
+    #clear_spiketimes_unique = clear_spiketimes[indexes_unique]                 #No longer exclude these as they could come from different cells on large arrays
+    #print "# of clear spikes: ", clear_spiketimes.shape[0]
+
+    #****************************************************************
+    #********************** DE-DUPLICATE SPIKES *********************
+    #****************************************************************
+    #Deduplicate spikes: remove spikes from same template that are within e.g. 20 time steps
+    #print("   Deduplicating clear spikes")
+    deduplication_time = time.time()
+    indexes=[]      #list to hold duplicate spike time indexes
+    ctr=0           #loop ctr; probably can write this loop simpler 
+    t_steps = 20    #window of time-steps to remove duplicates
+    for k in range(len(clear_spiketimes)):
+        nearby_indexes = np.where(np.logical_and(clear_spiketimes[:,0]>=clear_spiketimes[k,0]-t_steps, 
+                                                 clear_spiketimes[:,0]<=clear_spiketimes[k,0]+t_steps))[0]
+        matches = np.where(clear_spiketimes[nearby_indexes,1]==clear_spiketimes[k,1])[0]
+        
+        if len(matches)>1:
+            if ctr!=0:
+                if indexes[ctr-1][0]!=nearby_indexes[matches][0]:
+                    indexes.append(nearby_indexes[matches])
+                    ctr+=1
+            else:
+                indexes.append(nearby_indexes[matches])
+                ctr+=1
+
+    #Make list of duplicated events, keep in mind some are triplets, so delete all but one!!
+    duplicated_event_indexes = []
+    for k in range(len(indexes)):
+        duplicated_event_indexes.append(indexes[k][:-1])
+    
+    if len(duplicated_event_indexes)!=0:
+        duplicated_event_indexes = np.hstack(duplicated_event_indexes)
+        #print ("   # of deduplicated events: ", len(duplicated_event_indexes), ",  # of original clear events: ", len(clear_spiketimes))
+        clear_spiketimes_unique = np.delete(clear_spiketimes,duplicated_event_indexes,axis=0)
+        #print("...deduplication time: ", time.time()-deduplication_time)
+    else: 
+        clear_spiketimes_unique = clear_spiketimes
+
+    #****************************************************************
+    #*************************** REMOVING CLEAR SPIKES **************
+    #****************************************************************
+    window = 30 #Window in time steps to load template from spike time, e.g. -30..+31               *************************** CAN USE EVEN SMALLER CHUNKS OF TEMPLATE DATA TO FIT
+    recordings_copy = recordings.copy()
+    #clearing_time = time.time()
+    for p in range(len(clear_spiketimes_unique)):
+        #Load correct templates_shifted - but only chunk in centre of event using window # of time-steps
+        templates_shifted = shifted_templates[clear_spiketimes_unique[p,1],:,:,principal_channels[clear_spiketimes_unique[p,1]]][:,30-window:30+window+1]
+        
+        #Select times and expand into window
+        times = (clear_spiketimes_unique[p,0,np.newaxis] + np.arange(-R2-n_explore, n_explore+R2+1))
+
+        #Select entire channel trace on max channel
+        recording = recordings[:, principal_channels[clear_spiketimes_unique[p,1]]]
+
+        #Select X number of recoding chunks that are time_shifted                              ***************************** TRY TO PYTHONIZE THIS STEP
+        recording_chunks = []
+        for time_ in times:
+            recording_chunks.append(recording[buffer_size+time_-window-data_start:buffer_size+time_+window+1-data_start])
+        recording_chunks = np.array(recording_chunks)
+
+        #Dot product of shifted recording chunks and shifted raw data
+        dot_product = np.matmul(templates_shifted,recording_chunks.T)
+        index = np.unravel_index(dot_product.argmax(), dot_product.shape)
+
+        recordings_copy[buffer_size+time_+index[1]-window-2*(R2+n_explore)-data_start:buffer_size+time_+index[1]-2*(R2+n_explore)+window+1-data_start,:]-=shifted_templates[clear_spiketimes_unique[p,1],index[0],30-window:30+window+1]
+        #quit()
+
+    #print("...spike clearing time: ", time.time()-clearing_time)
+
+    #Save spike_cleared recordings into recordings
+    recordings=recordings_copy
+
+    #****************************************************************
+    #***************************** CLEAN SPT_LIST *******************
+    #****************************************************************
+    #First make spt_list for local analysis only...
+    spt_list_local = []
+    for k in range(len(spt_list)):
+        spt = spt_list[k]
+        spt_list_local.append(spt[np.logical_and(spt >= data_start,spt < data_end)]-data_start)			#Find spikes on each channel within time window and offset to 0
+
+    #Remove clear spikes and save to spt_list_local        
+    clear_spike_times = clear_spiketimes_unique[:,0]          #Select spike times as 1st column of array 
+    for k in range(len(spt_list_local)):                      #Loop over all spt_list, i.e. channels
+        common = np.intersect1d(clear_spike_times+data_start, spt_list_local[k])      # find intersetion of clear spikes and spt_list on all channels
+        if len(common)>0:
+            indexes = np.hstack([(spt_list_local[k]==i).nonzero()[0] for i in common])    # 
+            spt_list_local[k] = np.delete(spt_list_local[k],indexes)                            #
+
+    #*********************************************************************************************************************************************
+    #*********************************************************************************************************************************************
+    #*********************************************************************************************************************************************
+
+    #*********************************************************************************************************************************************
+    #********************************* DOT PRODUCT LOOP  *****************************************************************************************
+    #*********************************************************************************************************************************************
+
+    ctr_times=0				#Marker to ensure some spikes are present in the specific time chunk
+    for k in range(n_templates):
+        #Select spikes on the max channel of the template picked and offset to t=0 + buffer
+        if False: 
+            spt = spt_list[principal_channels[k]]
+            spt = spt[np.logical_and(spt >= data_start,spt < data_end)]		
+            spt = np.int32(spt - data_start + offset)
+        else: 
+            spt = spt_list_local[principal_channels[k]]                         #Cat use cleared_spike spt_list, also index locally only
+            spt = np.int32(spt + offset)
+        
+        #Pick channels around template 
+        ch_idx = np.where(visible_channels[k])[0]	# Pick indexes for channels above threshold
+
+        times = (spt[:, np.newaxis] + np.arange(-R2-n_explore, n_explore+R2+1))	#duplicate spikes -32..+33 sampletimes (65 in total) for each spike
+        if len(times)==0: continue		#Skip this chunk of time, no spikes in it
+
+
+        #Use 2D original arrays
+        #This step is equivalent to: wf = recordings[times][ch_idx]; it picks 65 time shifted versions (i.e. from times variable) of each original spike on visible chans (i.e. ch_idx)
+        wf = ((recordings.ravel()[(ch_idx + (times * recordings.shape[1]).reshape((-1,1))).ravel()]).reshape(times.size, ch_idx.size)).reshape((spt.shape[0], -1, ch_idx.shape[0]))	
+        #SUMMARY: wf contains n_spikes X n_sample_pts X n_channels
+        
+        spatial_dot = np.matmul(spatial_features[k][np.newaxis, np.newaxis, :, :, ch_idx],
+                    wf[:, :, np.newaxis, :, np.newaxis])[:,:,:,:,0].transpose(0, 2, 1, 3)
+
+        dot = np.zeros((spt.shape[0], 2*n_explore+1, n_shifts))
+        for j in range(2*n_explore+1):
+            dot[:, j] = np.sum(spatial_dot[:, :, j:j+2*R2+1]*temporal_features[k][np.newaxis], (2, 3))
+        
+        d_matrix[spt[:, np.newaxis] + np.arange(-n_explore,n_explore+1), k] = 2*dot - norms[k][np.newaxis, np.newaxis]
+        
+        ctr_times+=1
+    
+	
+    if ctr_times==0: 
+        print ("********************************************************** no spikes 2...")
+        return None
+	#continue	#Skip this chunk of time entirely
+	    
+	    
+    #*****************************************************************************************************
+    #*********************************** THRESHOLD LOOP **************************************************
+    #*****************************************************************************************************
+    #print ("Processor: ", proc_idx, "chunk: ", chunk_idx, " in thresholding loop ...") 
+    spike_train = np.zeros((0, 2), 'int32')
+   
+    max_d = np.max(d_matrix, (1,2))
+    max_d_array = []
+    max_d_array.append(max_d.copy())
+
+    spike_times = []
+
+    max_val = np.max(max_d)
+    threshold_ctr=0
+    
+    while max_val > threshold_d:
+        #print max_val
+
+        # find spike time; get spike time from objective function; and which template it is
+        peaks = argrelmax(max_d)[0]
+        
+        idx_good = peaks[np.argmax(max_d[peaks[:, np.newaxis] + np.arange(-R,R+1)],1) == R]
+        #idx_good = peaks
+        
+        spike_time = idx_good[max_d[idx_good] > threshold_d]
+        spike_times.append(spike_time)
+                                #argmax finds the location (in template_id space) of the maximum value at each peak time - and it does so by also considering time shifts
+        template_id, max_shift = np.unravel_index(np.argmax(np.reshape(d_matrix[spike_time],(spike_time.shape[0], -1)),1),[n_templates, n_shifts])	#This finds the template_id and max_shift for each peak detected
+
+        ## prevent refractory period violation
+        rf_area = spike_time[:, np.newaxis] + np.arange(-R,R+1)
+        rf_area_t = np.tile(template_id[:,np.newaxis],(1, 2*R+1))
+        d_matrix[rf_area, rf_area_t] = -np.Inf
+
+        #****************BOTTLENECK #1************************
+        ## update nearby times
+        for j in range(spike_time.shape[0]):
+            #Original
+            t_neigh, k_neigh = np.where(d_matrix[spike_time[j]-2*R : spike_time[j]+2*R, :, 0] > -np.Inf)		#Find non-Inf values in the spike time window, returns times and template to which times belongs
+
+            #new 
+            #t_neigh, k_neigh2 = np.where(d_matrix[spike_time[j]-2*R : spike_time[j]+2*R, overlap_channels[template_id[j]], 0] > -np.Inf)		#Find non-Inf values in the spike time window, returns times and template to which times belongs
+            #k_neigh = overlap_channels[template_id[j]][k_neigh2]
+            
+            t_neigh_abs = spike_time[j] + t_neigh - 2*R			#Shift the absolute times back to real-time (in specific block)
+            
+            d_matrix[t_neigh_abs, k_neigh] -= temp_temp[template_id[j], k_neigh, max_shift[j], :, t_neigh]		#***************** BOTTLNECK  #1
+
+            #Peter subtract all chunk of temp_temp not just for nearby space/time
+            #d_matrix[spike_time[j] -2*R : spike_time[j] + 2*R +1 , :] -= np.transpose(temp_temp[template_id[j], :, max_shift[j], :, :], (2,0,1))		#***************** BOTTLNECK  #1
+
+        #***********Optional update of d_matrix at specific times
+        #start_time=time.time()
+        #time_affected = np.reshape(spike_time[:, np.newaxis] + np.arange(-2*R,2*R+1), -1)
+        #time_affected = time_affected[max_d[time_affected] > -np.Inf]
+        
+        #****************BOTTLENECK #2************************
+        #check_pt2=time.time()
+        #max_d[time_affected] = np.max(d_matrix[time_affected], (1,2))		#***************** BOTTLNECK  #2: Updates the maximum values of objective function d_matrix
+        max_d = np.max(d_matrix, (1,2))					
+        #check_pt2 = time.time()-check_pt2
+        #print " 4-1 ", check_pt2
+        #*****************************************************
+        
+        #start_time1=time.time()
+        max_val = np.max(max_d)
+        #print " 4-2 ", time.time()-start_time1
+        
+        spike_train_temp = np.hstack((spike_time[:, np.newaxis],
+                          template_id[:, np.newaxis]))
+        spike_train = np.concatenate((spike_train, spike_train_temp), 0)         
+        #print "4 ", time.time()-start_time, "\n\n\n"
+
+        #print "max_val: ", max_val, "  total threshold loop time: ", time.time()-threshold_time, " % in dmax: ", int((check_pt2)/(time.time()-threshold_time)*100)
+        
+        threshold_ctr+=1
+        
+        max_d_array.append(max_d.copy())
+        
+        #sys.stdout.write("...# events removed: %d,   max_val: %f,   threshold counter: %d   \r" % (spike_time.shape[0], max_val, threshold_ctr) )
+        #sys.stdout.flush()
+
+    #Fix indexes
+    spike_times = spike_train[:, 0]
+    # get only observations outside the buffer
+    train_not_in_buffer = spike_train[np.logical_and(spike_times >= offset,
+						     spike_times <= idx_local_end)]
+    # offset spikes depending on the absolute location
+    train_not_in_buffer[:, 0] = (train_not_in_buffer[:, 0] + data_start
+				 - buffer_size)
+
+    if len(clear_spiketimes_unique)>0: 
+        final_spikes = np.concatenate((clear_spiketimes_unique,train_not_in_buffer),axis=0)
+    else:
+        final_spikes = train_not_in_buffer
+
+    prRed("Chunk: "+str(chunk_idx)), prGreen(" time: "+ str(time.time() - start_time_chunk)),
+    print("#decon spks: ", len(train_not_in_buffer), " # clear spks: ", len(clear_spiketimes_unique), " Total: ", len(final_spikes), "  # threshold loops: ",threshold_ctr)
+    #print('')
+
+    #.append(train_not_in_buffer)
+    #chunk_idx+=1
+
+    return final_spikes
+
+
+def prRed(prt): print("\033[91m {}\033[00m" .format(prt)),
+def prGreen(prt): print("\033[92m {}\033[00m" .format(prt)),
+def prYellow(prt): print("\033[93m {}\033[00m" .format(prt)),
+def prPurple(prt): print("\033[95m {}\033[00m" .format(prt))
+
 
 def deconvolve_new(data_in, filename_bin, filename_spt_list, filename_temp_temp, filename_shifted_templates, buffer_size, n_channels, temporal_features, spatial_features, n_explore, threshold_d):
     
@@ -524,7 +879,7 @@ def deconvolve_new_allcores(data_in, filename_bin, filename_spt_list, filename_t
 
     return train_not_in_buffer
 
-    
+
 #********************************************************************************************************************************************
 #********************************************************************************************************************************************
 #********************************************************************************************************************************************

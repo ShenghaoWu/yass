@@ -34,11 +34,15 @@ def get_templates(spike_train, path_to_recordings, max_memory, spike_size):
         n_templates=n_templates)
 
     templates = res[0]
+    
     weights = res[1]
     weights[weights == 0] = 1
-    templates = templates/weights[np.newaxis, np.newaxis, :]
 
+    templates = templates/weights[np.newaxis, np.newaxis, :]
+    
     return templates, weights
+
+
 
 
 def compute_weighted_templates(recording, idx_local, idx, previous_batch,
@@ -78,10 +82,12 @@ def compute_weighted_templates(recording, idx_local, idx, previous_batch,
     return weighted_templates, weights
 
 
+
 # TODO: docs
 def get_and_merge_templates(spike_train_clear, path_to_recordings, max_memory,
                             spike_size, template_max_shift, t_merge_th,
                             neighbors):
+    
     templates, weights = get_templates(spike_train_clear, path_to_recordings,
                                        max_memory,
                                        2*(spike_size + template_max_shift))
@@ -97,6 +103,9 @@ def get_and_merge_templates(spike_train_clear, path_to_recordings, max_memory,
         template_max_shift+(4*spike_size+1))]
 
     return spike_train_clear, templates
+
+
+
 
 
 def align_templates(templates, max_shift):
