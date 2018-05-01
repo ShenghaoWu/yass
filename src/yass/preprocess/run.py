@@ -122,9 +122,9 @@ def run(output_directory='tmp/', if_file_exists='skip'):
                     whiten_filter)
 
     # read config params
-    multi_processing = CONFIG.resources.multi_processing
-    n_processors = CONFIG.resources.n_processors
-    n_sec_chunk = CONFIG.resources.n_sec_chunk
+    multi_processing = True
+    n_processors = 8
+    n_sec_chunk = 1
     n_channels = CONFIG.recordings.n_channels
     sampling_rate = CONFIG.recordings.sampling_rate
 
@@ -168,7 +168,7 @@ def run(output_directory='tmp/', if_file_exists='skip'):
     if multi_processing:
         parmap.map(
             filter_standardize,
-            zip(idx_list, proc_indexes),
+            list(zip(idx_list, proc_indexes)),
             low_frequency,
             high_factor,
             order,
