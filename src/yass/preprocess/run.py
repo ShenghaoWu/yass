@@ -124,7 +124,7 @@ def run(output_directory='tmp/', if_file_exists='skip'):
     # read config params
     multi_processing = True
     n_processors = 8
-    n_sec_chunk = 1
+    n_sec_chunk = 10
     n_channels = CONFIG.recordings.n_channels
     sampling_rate = CONFIG.recordings.sampling_rate
 
