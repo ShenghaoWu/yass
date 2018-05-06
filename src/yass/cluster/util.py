@@ -126,6 +126,8 @@ def run_cluster_location_firstbatch(standardized_recording,
     feature_array = []
     assignment_array = []
     
+    logger.info(' Cat: TODO: fix trace reader: remove outliaer spikes...')
+
     for channel in range(n_channels):
 
         idx_data = np.where(spike_index[:, 1] == channel)[0]
@@ -211,7 +213,8 @@ def run_cluster_location_firstbatch(standardized_recording,
 def read_traces(standardized_recording, spike_index, n_samples=15):
              
     # get traces   
-    # Cat: change from list to numpy array then remove empty entries
+    # Cat: TODO: remove spikes at ends and then just populate numpy array
+       
     wf = []
     for spike in spike_index:
         temp_trace = standardized_recording[spike-n_samples:spike + n_samples+1]

@@ -88,8 +88,6 @@ def run(standardized_recording, standarized_path, standarized_params,
     """
     CONFIG = read_config()
 
-    print ("***********************detect first batch ... ")
-
     # load files in case they are strings or Path objects
     standarized_params = file_loader(standarized_params)
     channel_index = file_loader(channel_index)

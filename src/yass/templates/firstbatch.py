@@ -150,7 +150,7 @@ def run(standardized_recording, spike_train, tmp_loc,
     path_spike_train_clear_after_templates = os.path.join(
                                 CONFIG.data.root_folder,
                                 output_directory,
-                                'spike_train_clear_after_templates.npy')
+                                'spike_train_clear_posttemplates.npy')
 
     np.save(path_spike_train_clear_after_templates, 
                                     spike_train_clear_after_templates)
