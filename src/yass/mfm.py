@@ -967,7 +967,7 @@ def spikesort(score, mask, group, param):
     for j in range(score.shape[0]):
         assignment[j] = assignmentTemp[group[j]]
 
-    idx_triage = cluster_triage(vbParam, score, 1000)
+    idx_triage = cluster_triage(vbParam, score, 3)
     assignment[idx_triage] = -1
 
     return assignment, vbParam

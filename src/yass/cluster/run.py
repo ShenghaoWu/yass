@@ -83,12 +83,13 @@ def run(scores, spike_index):
         
         np.save(CONFIG.data.root_folder+ "tmp/spike_train_clear_subsampled", spike_train)
 
-        spike_train_excluded = recover_clear_spikes(scores_excluded, spike_index_excluded, outlier_vbPar)
+        spike_train_excluded = recover_clear_spikes(scores_excluded, spike_index_excluded, outlier_vbPar, CONFIG)
         print (spike_train_excluded.shape)
 	    
         #Concatenate spike_train and spike_train_excluded
         spike_train = np.concatenate([spike_train, spike_train_excluded],axis=0)
         print (spike_train.shape)
+        np.save(CONFIG.data.root_folder+ "tmp/spike_train_concatenated", spike_train)
     
     else:
         ###########

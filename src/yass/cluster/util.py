@@ -1,7 +1,7 @@
 import numpy as np
 import logging
 
-from yass.mfm import spikesort, maskData, cluster_triage
+from yass.mfm import spikesort, maskData, cluster_triage, suffStatistics
 
 
 def run_cluster(scores, masks, groups, spike_times,
@@ -133,13 +133,17 @@ def run_cluster(scores, masks, groups, spike_times,
 
     return spike_train[idx_sort]
 
-def recover_clear_spikes(scores, spike_times, outlier_vbPar):
+def recover_clear_spikes(scores, spike_times, outlier_vbPar, CONFIG):
     
-    
+    start = np.zeros(len(scores), dtype = 'int')
     print(len(scores))
+    
     n_channels = len(outlier_vbPar)
-    global_spike_time = np.zeros(0).astype('uint32')
-    global_cluster_id = np.zeros(0).astype('uint16')
+    global_spike_time = []
+    global_clusterid = []
+
+    for i in range(1,n_channels):
+        start[i] = start[i-1] + outlier_vbPar[i-1].rhat.shape[1]
     for channel in range(n_channels):
         print ("...recover clear spikes ch: ", channel)
         #logger.info('Processing channel {}'.format(channel))
@@ -155,8 +159,8 @@ def recover_clear_spikes(scores, spike_times, outlier_vbPar):
             mask = np.ones((n_data, 1))
             group = np.arange(n_data)
             maskedData = maskData(score, mask, group)
-            
             outlier_vbPar[channel].update_local(maskedData)
+                
             assignmentTemp = np.argmax(outlier_vbPar[channel].rhat, axis=1)
 
             cluster_id = np.zeros(score.shape[0], 'int16')  
@@ -164,27 +168,35 @@ def recover_clear_spikes(scores, spike_times, outlier_vbPar):
                 cluster_id[j] = assignmentTemp[group[j]]
 
             #idx_triage = cluster_triage(outlier_vbPar[channel], score, 1000)
-            idx_triage = cluster_triage(outlier_vbPar[channel], score, 10)   #Cat changed back to a lower value;
+            idx_triage = cluster_triage(outlier_vbPar[channel], score, 3)   #Cat changed back to a lower value;
             cluster_id = cluster_id[~idx_triage]
             spike_time = spike_time[~idx_triage]
-
+            scores[channel] = scores[channel][~idx_triage]
+            cluster_id += start[channel]
+            global_spike_time += [spike_time]
+            global_clusterid += [cluster_id] 
             # gather clustering information into global variable
-            (global_spike_time,
-             global_cluster_id) = global_cluster_info(spike_time,
-                                                      cluster_id,
-                                                      global_spike_time,
-                                                      global_cluster_id)
+            # (global_spike_time,
+            # global_cluster_id) = global_cluster_info(spike_time,
+            #                                         cluster_id,
+            #                                          global_spike_time,
+            #                                          global_cluster_id)
+            
+    global_clusterid = np.hstack(global_clusterid)
+    global_spike_time = np.hstack(global_spike_time)
     spike_train = np.hstack(
         (global_spike_time[:, np.newaxis],
-        global_cluster_id[:, np.newaxis]))
+        global_clusterid[:, np.newaxis]))
 
     # sort based on spike_time
     idx_sort = np.argsort(spike_train[:, 0])
+    scores = np.concatenate(scores, axis = 0)
+    scores = scores[idx_sort]
+
+    path_to_scores = CONFIG.data.root_folder+ 'tmp/triage_score_recovered.npy'
+    np.save(path_to_scores, scores)
 
     return spike_train[idx_sort]
-                                            
-            
-
                                                           
 def run_cluster_location(scores, spike_times, CONFIG):
     """
@@ -250,6 +262,7 @@ def run_cluster_location(scores, spike_times, CONFIG):
 
             cluster_id = cluster_id[~idx_triage]
             spike_time = spike_time[~idx_triage]
+            scores[channel] = scores[channel][~idx_triage]
 
             # gather clustering information into global variable
             (global_spike_time,
@@ -258,15 +271,25 @@ def run_cluster_location(scores, spike_times, CONFIG):
                                                       global_spike_time,
                                                       global_cluster_id)
             
-            
 
     # make spike train
     spike_train = np.hstack(
         (global_spike_time[:, np.newaxis],
          global_cluster_id[:, np.newaxis]))
 
+    
     # sort based on spike_time
     idx_sort = np.argsort(spike_train[:, 0])
+    
+    
+    # sort based on spike_time
+    #idx_sort = np.argsort(spike_train[:, 0])
+    scores = np.concatenate(scores, axis = 0)
+    scores = scores[idx_sort]
+
+    path_to_scores = CONFIG.data.root_folder+ 'tmp/triage_score_cluster_locations.npy'
+    np.save(path_to_scores, scores)
+
 
     return spike_train[idx_sort], outlier_vbPar
 
