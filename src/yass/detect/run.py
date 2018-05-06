@@ -293,6 +293,9 @@ def run_neural_network(standarized_path, standarized_params,
             NNAE=NNAE,
             NNT=NNT,
             neighbors=neighbors)
+            
+            
+            
 
         # get clear spikes
         clear = np.concatenate([element[1] for element in res], axis=0)

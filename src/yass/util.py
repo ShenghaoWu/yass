@@ -580,3 +580,140 @@ def running_on_gpu():
         return False
 
     return True if gpus else False
+
+
+def first_batch(output_directory,if_file_exists): 
+    
+    CONFIG = yass.read_config()
+    TMP_FOLDER = os.path.join(CONFIG.data.root_folder, output_directory)
+    
+    # **********************************************
+    # ************* PREPROCESS STEP ****************
+    # **********************************************
+
+    from yass.preprocess import firstbatch as preprocess_firstbatch
+
+    logger.info(' Preprocessing first batch  ')
+    
+    standardized_path = os.path.join(TMP_FOLDER,'standardized_firstbatch.npy')
+    if os.path.exists(standardized_path):
+        standardized_recording=np.load(standardized_path)    
+        standardized_params=np.load(standardized_path.replace('.npy','_params.npy'))
+        whiten_filter = np.load(os.path.join(TMP_FOLDER, 'whitening.npy'))
+        channel_index = np.load(os.path.join(TMP_FOLDER, 'channel_index.npy'))
+    
+    else:
+        (standardized_recording, standardized_path, standardized_params, 
+               channel_index, whiten_filter)= preprocess_firstbatch.run()
+    
+    logger.info(' TODO: Parallelize filtering for single chunk of data ')
+
+    # **********************************************
+    # ************** DETECT STEP *******************
+    # **********************************************
+
+    from yass.detect import firstbatch as detect_firstbatch
+
+    logger.info(' Detection first batch ')
+
+    if os.path.exists(os.path.join(TMP_FOLDER,'scores_clear.npy')):
+        
+        scores = np.load(os.path.join(TMP_FOLDER,'scores_clear.npy'))
+        spike_index_clear = np.load(os.path.join(TMP_FOLDER,'spikes_clear.npy'))
+        spike_index_all = np.load(os.path.join(TMP_FOLDER,'spikes_all.npy'))
+    else:
+        (scores_ae, spike_index_clear, 
+         spike_index_all) = detect_firstbatch.run(standardized_recording, 
+                            standardized_path, standardized_params, 
+                            channel_index, whiten_filter)
+    
+    # **********************************************
+    # ******** CLUSTER STEP (INCL. FEATURIZE) ******
+    # **********************************************
+
+    from yass.cluster import firstbatch as cluster_firstbatch
+
+    logger.info(' Clustering first batch ')
+
+    spike_train_path = os.path.join(
+                            TMP_FOLDER,'spike_train_clear_postcluster.npy')
+
+    if os.path.exists(spike_train_path):
+        spike_train_clear_postcluster = np.load(spike_train_path)
+        tmp_loc = np.load(os.path.join(TMP_FOLDER,'tmp_loc.npy'))
+        vbParam = np.load(os.path.join(TMP_FOLDER,'vbParam.npy'))
+    else: 
+        (spike_train_clear_postcluster, tmp_loc, 
+            vbParam, scores) = cluster_firstbatch.run(standardized_recording,
+            spike_index_clear)    
+
+    
+    # **********************************************
+    # **************** TEMPLATE STEP ***************
+    # **********************************************
+    from yass.templates import firstbatch as templates_firstbatch
+
+    logger.info(' Templates first batch ')
+
+    templates, spike_train_clear_posttemplates = templates_firstbatch.run(
+                            standardized_recording, 
+                            spike_train_clear_postcluster, 
+                            tmp_loc)
+    
+    np.save(os.path.join(TMP_FOLDER,'templates.npy'), templates)
+    
+    return (templates, scores, spike_train_clear_posttemplates, 
+                              spike_index_all)
+                               
+
+
+def stream_batch(templates, scores, output_directory):
+    
+    CONFIG = yass.read_config()
+    TMP_FOLDER = os.path.join(CONFIG.data.root_folder, output_directory)
+    
+    # **********************************************
+    # ************* PREPROCESS STEP ****************
+    # **********************************************
+
+    from yass.preprocess import firstbatch as preprocess_firstbatch
+
+    logger.info(' Preprocessing streaming  ')
+    
+    standardized_path = os.path.join(TMP_FOLDER,'standardized_firstbatch.npy')
+    if os.path.exists(standardized_path):
+        standardized_recording=np.load(standardized_path)    
+        standardized_params=np.load(standardized_path.replace('.npy','_params.npy'))
+        whiten_filter = np.load(os.path.join(TMP_FOLDER, 'whitening.npy'))
+        channel_index = np.load(os.path.join(TMP_FOLDER, 'channel_index.npy'))
+    
+    else:
+        (standardized_recording, standardized_path, standardized_params, 
+               channel_index, whiten_filter)= preprocess_firstbatch.run()
+    
+    # **********************************************
+    # ************** DETECT STEP *******************
+    # **********************************************
+
+    from yass.detect import firstbatch as detect_firstbatch
+
+    logger.info(' Detection first batch ')
+
+    if os.path.exists(os.path.join(TMP_FOLDER,'scores_clear.npy')):
+        
+        scores = np.load(os.path.join(TMP_FOLDER,'scores_clear.npy'))
+        spike_index_clear = np.load(os.path.join(TMP_FOLDER,'spikes_clear.npy'))
+        spike_index_all = np.load(os.path.join(TMP_FOLDER,'spikes_all.npy'))
+    else:
+        (scores_ae, spike_index_clear, 
+         spike_index_all) = detect_firstbatch.run(standardized_recording, 
+                            standardized_path, standardized_params, 
+                            channel_index, whiten_filter)
+    
+    
+
+
+
+
+
+

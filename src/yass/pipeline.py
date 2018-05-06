@@ -7,6 +7,8 @@ import logging.config
 import shutil
 import os
 import os.path as path
+import scipy
+import scipy.sparse
 
 try:
     # py3
@@ -25,7 +27,7 @@ from yass import templates as get_templates
 from yass import read_config
 
 from yass.util import (load_yaml, save_metadata, load_logging_config_file,
-                       human_readable_time)
+                       human_readable_time, first_batch)
 from yass.explore import RecordingExplorer
 from yass.threshold import dimensionality_reduction as dim_red
 
@@ -100,51 +102,82 @@ def run(config, logger_level='INFO', clean=False, output_dir='tmp/',
     # print yass version
     logger.info('YASS version: %s', yass.__version__)
 
-    # preprocess
-    start = time.time()
-    (standarized_path,
-     standarized_params,
-     channel_index,
-     whiten_filter) = (preprocess
-                       .run(output_directory=output_dir,
-                            if_file_exists=CONFIG.preprocess.if_file_exists))
-    time_preprocess = time.time() - start
 
-    # detect
+    # process first batch
     start = time.time()
-    (score, spike_index_clear,
-     spike_index_all) = detect.run(standarized_path,
-                                   standarized_params,
-                                   channel_index,
-                                   whiten_filter,
-                                   output_directory=output_dir,
-                                   if_file_exists=CONFIG.detect.if_file_exists,
-                                   save_results=CONFIG.detect.save_results)
-    time_detect = time.time() - start
+    (templates, scores, spike_index_clear, spike_index_all) = first_batch(
+                            output_directory=output_dir,
+                            if_file_exists=CONFIG.preprocess.if_file_exists)
+    time_firstbatch = time.time() - start
+    
+    quit()
+    # online batch processing
+    start = time.time()
+    stream_batch(templates, scores, output_directory=output_dir)
+    time_stream = time.time() - start
 
-    # cluster
-    start = time.time()
-    spike_train_clear, tmp_loc, vbParam = cluster.run(
-        score,
-        spike_index_clear,
-        output_directory=output_dir,
-        if_file_exists=CONFIG.cluster.if_file_exists,
-        save_results=CONFIG.cluster.save_results)
-    time_cluster = time.time() - start
 
-    # get templates
-    start = time.time()
-    (templates,
-     spike_train_clear_after_templates,
-     groups,
-     idx_good_templates) = get_templates.run(
-        spike_train_clear, tmp_loc,
-        output_directory=output_dir,
-        if_file_exists=CONFIG.templates.if_file_exists,
-        save_results=CONFIG.templates.save_results)
-    time_templates = time.time() - start
+    ## skip old processing 
+    #if False:
+        ## preprocess
+        #start = time.time()
+        #(standarized_path,
+         #standarized_params,
+         #channel_index,
+         #whiten_filter) = (preprocess
+                           #.run(output_directory=output_dir,
+                                #if_file_exists=CONFIG.preprocess.if_file_exists))
+        #time_preprocess = time.time() - start
+
+        ## detect
+        #start = time.time()
+        #(score, spike_index_clear,
+         #spike_index_all) = detect.run(standarized_path,
+                                       #standarized_params,
+                                       #channel_index,
+                                       #whiten_filter,
+                                       #output_directory=output_dir,
+                                       #if_file_exists=CONFIG.detect.if_file_exists,
+                                       #save_results=CONFIG.detect.save_results)
+        #time_detect = time.time() - start
+
+        ## cluster
+        #start = time.time()
+        #spike_train_clear, tmp_loc, vbParam = cluster.run(
+            #score,
+            #spike_index_clear,
+            #output_directory=output_dir,
+            #if_file_exists=CONFIG.cluster.if_file_exists,
+            #save_results=CONFIG.cluster.save_results)
+        #time_cluster = time.time() - start
+
+        ## save spike assignment for spike_index_clear above
+        #row = vbParam.rhat[:,0].astype('int32')
+        #column = vbParam.rhat[:,1].astype('int32')
+        #data = vbParam.rhat[:,2]
+        #rhat = scipy.sparse.csr_matrix((data, (row, column))).toarray()
+
+        #assignment = np.argmax(rhat, axis = 1)
+        #np.save(path.join(CONFIG.data.root_folder, output_dir, "assignment.npy"), assignment)
+
+
+        ## get templates
+        #start = time.time()
+        #(templates,
+         #spike_train_clear_after_templates,
+         #groups,
+         #idx_good_templates) = get_templates.run(
+            #spike_train_clear, tmp_loc,
+            #output_directory=output_dir,
+            #if_file_exists=CONFIG.templates.if_file_exists,
+            #save_results=CONFIG.templates.save_results)
+        #time_templates = time.time() - start
+
+
+    # *************** RUN DECONVOLUTION ON COLLISSION SPIKES ***********
 
     # run deconvolution
+    
     start = time.time()
     spike_train, templates = deconvolute.run(spike_index_all, templates,
                                              output_directory=output_dir)

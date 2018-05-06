@@ -1,9 +1,11 @@
 import numpy as np
 import logging
+from statsmodels import robust
+from sklearn import decomposition
+from scipy.spatial import cKDTree
 
 from yass import mfm
 from scipy.sparse import lil_matrix
-
 
 def run_cluster(scores, masks, groups, spike_index,
                 min_spikes, CONFIG):
@@ -43,7 +45,8 @@ def run_cluster(scores, masks, groups, spike_index,
     # this is not a good idea as having a mutable object lying around the code
     # can break things and make it hard to debug
     # (09/27/17) Eduardo
-
+    logger = logging.getLogger(__name__)
+    
     n_channels = np.max(spike_index[:, 1]) + 1
     global_score = None
     global_vbParam = None
@@ -52,7 +55,9 @@ def run_cluster(scores, masks, groups, spike_index,
 
     # run clustering algorithm per main channel
     for channel in range(n_channels):
-
+        
+        
+        logger.info('Processing channel {}'.format(channel))
         idx_data = np.where(spike_index[:, 1] == channel)[0]
         score_channel = scores[idx_data]
         mask_channel = masks[channel]
@@ -86,6 +91,162 @@ def run_cluster(scores, masks, groups, spike_index,
     return global_vbParam, global_tmp_loc, global_score, global_spike_index
 
 
+def run_cluster_location_firstbatch(standardized_recording,  
+                                    spike_index, min_spikes, CONFIG):
+    """
+    run clustering algorithm using MFM and provided features
+
+    Parameters
+    ----------
+
+    spike_times: list (n_channels)
+        A list such that spike_index[c] cointains all spike times
+        whose channel is c
+
+    CONFIG: class
+        configuration class
+
+    Returns
+    -------
+    spike_train: np.array (n_data, 2)
+        spike_train such that spike_train[j, 0] and spike_train[j, 1]
+        are the spike time and spike id of spike j
+    """
+    logger = logging.getLogger(__name__)
+
+    n_channels = np.max(spike_index[:, 1]) + 1
+    global_score = None
+    global_vbParam = None
+    global_spike_index = None
+    global_tmp_loc = None
+    
+    print len(spike_index)
+       
+    # run clustering algorithm per main channel
+    feature_array = []
+    assignment_array = []
+    
+    for channel in range(n_channels):
+
+        idx_data = np.where(spike_index[:, 1] == channel)[0]
+        spike_index_channel = spike_index[idx_data]
+
+        if len(idx_data) <= 1:
+            continue
+
+        # ***** FEATURIZE FROM RAW DATA ******
+        # Cat: featurize data using standardized recording & spike_index
+        # TODO: this be done once for all chans while data is in memory
+        #       but not for first batch; also need to redo if iterative
+        #       clustering
+
+        # Cat: can limit wf and featurization to 100-150um for lower memory
+        wf = read_traces(standardized_recording, 
+                                spike_index[idx_data][:,0], n_samples=15)
+           
+        channel_feature_array = featurize(wf, 
+                                    n_samples = 15,  # Cat: make this config param
+                                    n_mad_chans = 3, # Cat: make this config param
+                                    n_dim=3)         # Cat: make this config param
+                
+        # ***** PRE-CLUSTERING TRIAGE *******
+        score_channel = channel_feature_array  #only contains single 
+        # first triage
+        th = 95
+        # get distance to nearest neighbors
+        tree = cKDTree(score_channel)
+        dist, ind = tree.query(score_channel, k=11)
+        dist = np.sum(dist, 1)
+        # triage far ones
+        idx_keep = dist < np.percentile(dist, th)
+        
+        if len(np.where(idx_keep)[0])==0:
+            logger.info('Channel %s kept 0 spikes', str(channel))
+            assignment_array.append([])
+            feature_array.append([])
+            continue
+        
+        score_channel = score_channel[idx_keep]
+        spike_index_channel = spike_index_channel[idx_keep]
+        feature_array.append(channel_feature_array[idx_keep])
+
+        # simplified clustering code
+        mask = np.ones((score_channel.shape[0], 1))
+        group = np.arange(score_channel.shape[0])
+        vbParam2 = mfm.spikesort(score_channel[:,:,np.newaxis],
+                                mask,
+                                group, CONFIG)
+        vbParam2.rhat[vbParam2.rhat < 0.1] = 0
+        vbParam2.rhat = vbParam2.rhat/np.sum(vbParam2.rhat,
+                                             1, keepdims=True)
+                        
+        # convert soft assignments to cluster labels
+        assignment = np.argmax(vbParam2.rhat, axis=1)
+        assignment_array.append(assignment)
+
+        logger.info('Processed channel {} found %s clusters'.format(channel), np.max(assignment)+1)
+        
+        # clean clusters with nearly no spikes
+        vbParam = clean_empty_cluster(vbParam2, min_spikes)
+
+        # Cat: unclear what this does, offsets/updates spike/score lists?
+        if vbParam.rhat.shape[1] > 0:
+            # add changes to global parameters
+            (global_vbParam,
+             global_tmp_loc,
+             global_score,
+             global_spike_index) = global_cluster_info(
+                vbParam, channel, score_channel[:, :, np.newaxis],
+                spike_index_channel,
+                global_vbParam, global_tmp_loc,
+                global_score, global_spike_index)
+    
+
+    np.save(CONFIG.data.root_folder+ "feature_array.npy", feature_array)
+    np.save(CONFIG.data.root_folder+ "assignment_array.npy", assignment_array)
+    
+    return global_vbParam, global_tmp_loc, global_score, global_spike_index
+
+
+def read_traces(standardized_recording, spike_index, n_samples=15):
+             
+    # get traces   
+    # Cat: change from list to numpy array then remove empty entries
+    wf = []
+    for spike in spike_index:
+        temp_trace = standardized_recording[spike-n_samples:spike + n_samples+1]
+        if len(temp_trace)==(n_samples*2+1):
+            wf.append(temp_trace)
+    wf=np.float32(wf)
+                  
+    return wf
+
+def featurize(wf, n_samples=15, n_mad_chans=3, n_dim=5):
+    
+    ''' Compute mad over all spikes and rank channels by their peak mad
+        select n_std_chans largest mad channels and take all waveforms for PCA 
+    '''
+
+    n_pts = n_samples*2+1  # Cat: currently doing PCA on all times; can speed up here!
+
+    # compute median absolute deviation
+    rank_chans = robust.mad(wf, axis=0)
+
+    # rank channels by max mad value
+    rank_chans_max = np.max(rank_chans,axis=0)
+    rank_indexes = np.argsort(rank_chans_max,axis=0)[::-1] 
+    mad_chans = rank_indexes[:n_mad_chans]      # select top chans
+
+    #Collect data
+    wf_pca = wf[:,:,mad_chans]
+    wf_pca=np.reshape(wf_pca,(wf_pca.shape[0],-1))
+
+    #************ Do PCA **************
+    pca = decomposition.PCA(n_dim)
+    pca.fit(wf_pca)
+    return pca.transform(wf_pca)
+
+
 def run_cluster_location(scores, spike_index, min_spikes, CONFIG):
     """
     run clustering algorithm using MFM and location features
@@ -116,7 +277,7 @@ def run_cluster_location(scores, spike_index, min_spikes, CONFIG):
     global_vbParam = None
     global_spike_index = None
     global_tmp_loc = None
-
+    
     # run clustering algorithm per main channel
     for channel in range(n_channels):
 
@@ -433,6 +594,7 @@ def global_cluster_info(vbParam, main_channel,
         spike times matched to global_score
     global_cluster_id: np.array (n_data_all, 1)
         cluster id matched to global_score
+    
     Returns
     -------
     global_vbParam, global_maskedData: class

@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-
+import datetime
 
 def run_detect_triage_featurize(recordings, x_tf, output_tf,
                                 NND, NNAE, NNT, neighbors):
@@ -56,14 +56,17 @@ def run_detect_triage_featurize(recordings, x_tf, output_tf,
         rot = NNAE.load_rotation()
         energy = np.ptp(np.matmul(score[:, :, 0], rot.T), axis=1)
 
+        logger.info(' removing axons ')
         T, C = recordings.shape
         killed = remove_axons(spike_index, energy, neighbors, T, C)
+        logger.info(' done removing axons ')
 
         idx_keep = np.logical_and(~killed, idx_clean)
         score_clear = score[idx_keep]
         spike_index_clear = spike_index[idx_keep]
-
+    
     return (score_clear, spike_index_clear, spike_index)
+
 
 
 def remove_axons(spike_index, energy, neighbors, T, C):

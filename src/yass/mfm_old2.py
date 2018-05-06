@@ -151,9 +151,9 @@ class maskData:
         self.groupMask = groupMask / self.weight[:, np.newaxis]
         self.meanY = self.sumY / self.weight[:, np.newaxis, np.newaxis]
         self.meanYSq = self.sumYSq / \
-            self.weight[:, np.newaxis, np.newaxis, np.newaxis]
+                       self.weight[:, np.newaxis, np.newaxis, np.newaxis]
         self.meanEta = self.sumEta / \
-            self.weight[:, np.newaxis, np.newaxis, np.newaxis]
+                       self.weight[:, np.newaxis, np.newaxis, np.newaxis]
 
 
 class vbPar:
@@ -204,16 +204,18 @@ class vbPar:
         """
 
         pik = dirichlet(self.ahat.ravel())
-        Khat = self.ahat.size
-        Ngroup = maskedData.meanY.shape[0]
-        # nchannel = maskedData.meanY.shape[2]
-        log_rho = np.zeros([Ngroup, Khat])
-        for k in range(Khat):
-            mvn = multivariate_normal_logpdf(
-                maskedData.meanY, self.muhat[:, k, :],
-                self.Vhat[:, :, k, :] * self.nuhat[k])
-            log_rho[:, k] = log_rho[:, k] + mvn
-            log_rho[:, k] = log_rho[:, k] + np.log(pik[k])
+
+        Ngroup, nfeatures, nchannels = maskedData.meanY.shape
+
+        const1 = -nfeatures/2 * np.log(2 * np.pi)
+        prec = self.Vhat.transpose([2, 3, 0, 1]) * self.nuhat[:, np.newaxis, np.newaxis, np.newaxis]
+        xmu = (maskedData.meanY[:, :, np.newaxis] - self.muhat).transpose([0, 2, 3, 1])
+        maha = -np.squeeze(np.matmul(xmu[:, :, :, np.newaxis], np.matmul(prec, xmu[..., np.newaxis])),
+                           axis=(3, 4)) / 2.0
+        const2 = np.linalg.slogdet(prec)[1]/2.0
+        log_rho = np.sum(maha + const1 + const2 , axis = -1)
+
+        log_rho += np.log(pik)
         log_rho = log_rho - np.max(log_rho, axis=1)[:, np.newaxis]
         rho = np.exp(log_rho)
         self.rhat = rho / np.sum(rho, axis=1, keepdims=True)
@@ -236,23 +238,17 @@ class vbPar:
         self.lambdahat = prior.lambda0 + suffStat.Nhat
         self.muhat = suffStat.sumY / self.lambdahat[:, np.newaxis]
         invV = np.eye(nfeature) / prior.V
-        self.Vhat = np.zeros([nfeature, nfeature, Khat, nchannel])
-        self.invVhat = np.zeros([nfeature, nfeature, Khat, nchannel])
-        for k in range(Khat):
-            for n in range(nchannel):
-                self.invVhat[:, :, k, n] = self.invVhat[:, :, k, n] + invV
-                self.invVhat[
-                    :, :, k, n] = self.invVhat[
-                    :, :, k, n] + self.lambdahat[k] * np.dot(
-                    self.muhat[:, np.newaxis, k,
-                               n],
-                    self.muhat[:, np.newaxis, k, n].T)
-                temp = np.dot(self.muhat[:, np.newaxis, k, n],
-                              suffStat.sumY[:, np.newaxis, k, n].T)
-                self.invVhat[:, :, k, n] -= (temp + temp.T)
-                self.invVhat[:, :, k, n] += suffStat.sumYSq[:, :, k, n]
-                self.Vhat[:, :, k, n] = safe_inversion(
-                    self.invVhat[:, :, k, n])
+        self.invVhat = np.zeros([Khat, nchannel, nfeature, nfeature])
+        muhat_temp = np.transpose(self.muhat, [1, 2, 0])
+        sumY_temp = np.transpose(suffStat.sumY, [1, 2, 0])
+        self.invVhat += invV + self.lambdahat[:, np.newaxis, np.newaxis, np.newaxis] * \
+                        np.matmul(muhat_temp[..., np.newaxis], muhat_temp[:, :, np.newaxis])
+        temp = np.matmul(muhat_temp[..., np.newaxis], sumY_temp[:, :, np.newaxis])
+        self.invVhat += - temp - temp.transpose([0, 1, 3, 2])
+        self.invVhat += suffStat.sumYSq.transpose([2, 3, 0, 1])
+        self.Vhat = np.linalg.solve(self.invVhat, np.eye(nfeature))
+        self.invVhat = self.invVhat.transpose([2, 3, 0, 1])
+        self.Vhat = self.Vhat.transpose([2, 3, 0, 1])
         self.nuhat = prior.nu + suffStat.Nhat
 
     def update_global_selected(self, suffStat, param):
@@ -273,6 +269,7 @@ class vbPar:
         self.ahat = prior.a + suffStat.Nhat
         self.lambdahat = prior.lambda0 + suffStat.Nhat
         self.muhat = suffStat.sumY / self.lambdahat[:, np.newaxis]
+
         invV = np.eye(nfeature) / prior.V
         self.Vhat = np.zeros([nfeature, nfeature, Khat, nchannel])
         self.invVhat = np.zeros([nfeature, nfeature, Khat, nchannel])
@@ -280,18 +277,18 @@ class vbPar:
             for k in range(Khat):
                 self.invVhat[:, :, k, n] = self.invVhat[:, :, k, n] + invV
                 self.invVhat[
-                    :, :, k, n] = self.invVhat[
-                    :, :, k, n] + self.lambdahat[k] * np.dot(
+                :, :, k, n] = self.invVhat[
+                              :, :, k, n] + self.lambdahat[k] * np.dot(
                     self.muhat[:, np.newaxis, k, n],
                     self.muhat[:, np.newaxis, k, n].T)
                 temp = np.dot(self.muhat[:, np.newaxis, k, n],
                               suffStat.sumY[:, np.newaxis, k, n].T)
                 self.invVhat[
-                    :, :, k, n] = self.invVhat[:, :, k, n] - temp - temp.T
+                :, :, k, n] = self.invVhat[:, :, k, n] - temp - temp.T
                 self.invVhat[:, :, k, n] = self.invVhat[
-                    :, :, k, n] + suffStat.sumYSq[:, :, k, n]
-                self.Vhat[:, :, k, n] = safe_inversion(
-                    self.invVhat[:, :, k, n])
+                                           :, :, k, n] + suffStat.sumYSq[:, :, k, n]
+                self.Vhat[:, :, k, n] = np.linalg.solve(
+                    np.squeeze(self.invVhat[:, :, k, n]), np.eye(nfeature))
         self.nuhat = prior.nu + suffStat.Nhat
 
 
@@ -403,18 +400,18 @@ class suffStatistics:
 
                 visibleCluster = np.sum(rhat, axis=0) > 1e-10
                 sumMaskedRhat = self.Nhat - \
-                    np.sum(rhat * unmaskedWeight[:, np.newaxis],
-                           axis=0)
+                                np.sum(rhat * unmaskedWeight[:, np.newaxis],
+                                       axis=0)
                 self.sumYSq2[:, :, :, n] = np.sum(
                     rhat[:, np.newaxis, np.newaxis, :]
                     * unmaskedEta[:, :, :, np.newaxis], axis=0) + \
-                    sumMaskedRhat * maskedEta[:, :, np.newaxis]
+                                           sumMaskedRhat * maskedEta[:, :, np.newaxis]
                 self.sumYSq1[:, :, visibleCluster, n] = np.sum(
                     rhat[:, np.newaxis, np.newaxis, visibleCluster] *
                     unmaskedsumYSq[:, :, :, np.newaxis],
                     axis=0)
                 self.sumYSq[:, :, :, n] = self.sumYSq1[
-                    :, :, :, n] + self.sumYSq2[:, :, :, n]
+                                          :, :, :, n] + self.sumYSq2[:, :, :, n]
 
             elif nnoMask == Ngroup:
                 unmaskedY = maskedData.sumY[:, :, n]
@@ -426,8 +423,8 @@ class suffStatistics:
 
                 visibleCluster = np.sum(rhat, axis=0) > 1e-10
                 sumMaskedRhat = self.Nhat - \
-                    np.sum(rhat * maskedData.weight[:, np.newaxis],
-                           axis=0)
+                                np.sum(rhat * maskedData.weight[:, np.newaxis],
+                                       axis=0)
                 self.sumYSq2[:, :, :, n] = np.sum(
                     rhat[:, np.newaxis, np.newaxis, :] *
                     unmaskedEta[:, :, :, np.newaxis],
@@ -437,7 +434,7 @@ class suffStatistics:
                     unmaskedsumYSq[:, :, :, np.newaxis],
                     axis=0)
                 self.sumYSq[:, :, :, n] = self.sumYSq1[
-                    :, :, :, n] + self.sumYSq2[:, :, :, n]
+                                          :, :, :, n] + self.sumYSq2[:, :, :, n]
 
 
 class ELBO_Class:
@@ -535,7 +532,7 @@ class ELBO_Class:
                 keepdims=False),
             axis=(1, 2))
         fterm1 = -fterm1temp * \
-            vbParam.nuhat[k_ind] * suffStat.Nhat[k_ind] / 2.0
+                 vbParam.nuhat[k_ind] * suffStat.Nhat[k_ind] / 2.0
 
         fterm2 = -2.0 * np.squeeze(
             np.sum(
@@ -554,9 +551,9 @@ class ELBO_Class:
         fterm3 *= -vbParam.nuhat[k_ind] / 2.0
 
         fterm4 = -nchannel * suffStat.Nhat[k_ind] / 2.0 * (
-            nfeature / vbParam.lambdahat[k_ind] - nfeature * np.log(2.0) -
-            mult_psi(vbParam.nuhat[k_ind, np.newaxis] / 2.0,
-                     nfeature).ravel() + nfeature * np.log(2 * np.pi))
+                nfeature / vbParam.lambdahat[k_ind] - nfeature * np.log(2.0) -
+                mult_psi(vbParam.nuhat[k_ind, np.newaxis] / 2.0,
+                         nfeature).ravel() + nfeature * np.log(2 * np.pi))
 
         fterm5 = suffStat.Nhat[k_ind] * logdetVhat[k_ind] / 2.0
 
@@ -575,8 +572,8 @@ class ELBO_Class:
         # BM Term
 
         bmterm1 = 0.5 * prior.nu * \
-            np.sum(np.linalg.slogdet(
-                Vhat[k_ind, :, :, :] / prior.V)[1], axis=1)
+                  np.sum(np.linalg.slogdet(
+                      Vhat[k_ind, :, :, :] / prior.V)[1], axis=1)
 
         bmterm2 = -0.5 * vbParam.nuhat[k_ind] * (np.sum(
             np.trace(Vhat[k_ind, :, :, :] / prior.V, axis1=2, axis2=3),
@@ -589,10 +586,10 @@ class ELBO_Class:
         bmterm4 = -0.5 * vbParam.nuhat[k_ind] * prior.lambda0 * fterm1temp
 
         bmterm5 = nchannel * (
-            specsci.multigammaln(vbParam.nuhat[k_ind] / 2.0, nfeature) -
-            specsci.multigammaln(prior.nu / 2.0, nfeature) + 0.5 *
-            (prior.nu - vbParam.nuhat[k_ind]) * mult_psi(
-                vbParam.nuhat[k_ind, np.newaxis] / 2.0, nfeature).ravel())
+                specsci.multigammaln(vbParam.nuhat[k_ind] / 2.0, nfeature) -
+                specsci.multigammaln(prior.nu / 2.0, nfeature) + 0.5 *
+                (prior.nu - vbParam.nuhat[k_ind]) * mult_psi(
+            vbParam.nuhat[k_ind, np.newaxis] / 2.0, nfeature).ravel())
 
         bmterm[k_ind] = bmterm1 + bmterm2 + bmterm3 + bmterm4 + bmterm5
 
@@ -614,29 +611,21 @@ class ELBO_Class:
 
         dc_term = - specsci.gammaln(np.sum(vbParam.ahat)) + np.sum(
             specsci.gammaln(vbParam.ahat)) \
-            + specsci.gammaln(
+                  + specsci.gammaln(
             Khat * param.cluster.prior.a) - Khat * specsci.gammaln(
             param.cluster.prior.a) \
-            + np.sum(
+                  + np.sum(
             (param.cluster.prior.a - vbParam.ahat) * (
-                specsci.digamma(vbParam.ahat) - specsci.digamma(
-                    np.sum(vbParam.ahat))))
+                    specsci.digamma(vbParam.ahat) - specsci.digamma(
+                np.sum(vbParam.ahat))))
 
         # prior term
         pterm = Khat * np.log(prior.beta) - prior.beta - \
-            np.sum(np.log(np.arange(Khat)+1))
+                np.sum(np.log(np.arange(Khat) + 1))
 
         self.percluster = fit_term + bmterm + entropy_term2
         self.rest_term = np.sum(entropy_term1) + dc_term + pterm
         self.total = np.sum(self.percluster) + self.rest_term
-
-
-def safe_inversion(X):
-
-    w, d = np.linalg.eigh(X)
-    w[w <= 0] = 1e-8
-
-    return np.matmul(np.matmul(d, np.diag(1 / w)), d.T)
 
 
 def multivariate_normal_logpdf(x, mu, Lam):
@@ -786,18 +775,16 @@ def weightedKmeansplusplus(X, w, k):
 
 
 def birth_move(maskedData, vbParam, suffStat, param, L):
-
+    Khat = suffStat.sumY.shape[1]
     collectionThreshold = 0.1
     extraK = param.cluster.n_split
-    big_units = np.where(np.sum(
-        vbParam.rhat > collectionThreshold, 0) >= 20)[0]
-    if big_units.shape[0] > 0:
-        weight = (suffStat.Nhat[big_units] + 0.001) * L[big_units] ** 2
+
+    if np.any(np.sum(vbParam.rhat > collectionThreshold, 0) >= extraK):
+        weight = (suffStat.Nhat + 0.001) * L ** 2
         weight = weight / np.sum(weight)
         idx = np.zeros(1).astype(int)
         while np.sum(idx) < extraK:
-            kpicked = big_units[np.random.choice(
-                np.arange(big_units.shape[0]).astype(int), p=weight)]
+            kpicked = np.random.choice(np.arange(Khat).astype(int), p=weight)
             idx = vbParam.rhat[:, kpicked] > collectionThreshold
 
         idx = np.where(idx)[0]
@@ -818,33 +805,29 @@ def birth_move(maskedData, vbParam, suffStat, param, L):
         vbParamPrime, suffStatPrime = init_param(maskedDataPrime,
                                                  extraK, param)
 
-        for iter_creation in range(10):
+        for iter_creation in range(1):
             vbParamPrime.update_local(maskedDataPrime)
             suffStatPrime = suffStatistics(maskedDataPrime, vbParamPrime)
             vbParamPrime.update_global(suffStatPrime, param)
 
-        temp = vbParamPrime.rhat * maskedDataPrime.weight[:, np.newaxis]
-        goodK = np.sum(temp, axis=0) > 10
-        Nbirth = np.sum(goodK)
-        if Nbirth >= 1:
-            vbParam.ahat = np.concatenate(
-                (vbParam.ahat, vbParamPrime.ahat[goodK]), axis=0)
-            vbParam.lambdahat = np.concatenate(
-                (vbParam.lambdahat, vbParamPrime.lambdahat[goodK]), axis=0)
-            vbParam.muhat = np.concatenate(
-                (vbParam.muhat, vbParamPrime.muhat[:, goodK, :]), axis=1)
-            vbParam.Vhat = np.concatenate(
-                (vbParam.Vhat, vbParamPrime.Vhat[:, :, goodK, :]), axis=2)
-            vbParam.invVhat = np.concatenate(
-                (vbParam.invVhat,
-                 vbParamPrime.invVhat[:, :, goodK, :]), axis=2)
-            vbParam.nuhat = np.concatenate(
-                (vbParam.nuhat, vbParamPrime.nuhat[goodK]), axis=0)
-            L = np.concatenate((L, np.ones(Nbirth)), axis=0)
+        vbParam.ahat = np.concatenate(
+            (vbParam.ahat, vbParamPrime.ahat), axis=0)
+        vbParam.lambdahat = np.concatenate(
+            (vbParam.lambdahat, vbParamPrime.lambdahat), axis=0)
+        vbParam.muhat = np.concatenate(
+            (vbParam.muhat, vbParamPrime.muhat), axis=1)
+        vbParam.Vhat = np.concatenate(
+            (vbParam.Vhat, vbParamPrime.Vhat), axis=2)
+        vbParam.invVhat = np.concatenate(
+            (vbParam.invVhat, vbParamPrime.invVhat), axis=2)
+        vbParam.nuhat = np.concatenate(
+            (vbParam.nuhat, vbParamPrime.nuhat), axis=0)
 
         vbParam.update_local(maskedData)
         suffStat = suffStatistics(maskedData, vbParam)
         vbParam.update_global(suffStat, param)
+        nbrith = vbParamPrime.rhat.shape[1]
+        L = np.concatenate((L, np.ones(nbrith)), axis=0)
 
     return vbParam, suffStat, L
 
@@ -862,14 +845,14 @@ def merge_move(maskedData, vbParam, suffStat, param, L, check_full):
     while (not all_checked) and (K > 1):
         prec = np.transpose(
             vbParam.Vhat * vbParam.nuhat[
-                np.newaxis, np.newaxis, :, np.newaxis],
+                           np.newaxis, np.newaxis, :, np.newaxis],
             axes=[2, 3, 0, 1])
         diff_mhat = (vbParam.muhat[:, np.newaxis] -
                      vbParam.muhat[:, :, np.newaxis]).transpose(1, 2, 3, 0)
         maha = np.sum(np.matmul(np.matmul(
             diff_mhat[:, :, :, np.newaxis, :], prec),
-                                diff_mhat[:, :, :, :, np.newaxis]),
-                      (2, 3, 4))
+            diff_mhat[:, :, :, :, np.newaxis]),
+            (2, 3, 4))
 
         maha[np.arange(K), np.arange(K)] = np.Inf
         merged = 0
@@ -899,6 +882,7 @@ def check_merge(maskedData, vbParam, suffStat, ka, kb, param, L, ELBO):
     no_kab = np.ones(K).astype(bool)
     no_kab[[ka, kb]] = False
     ELBO_bmerge = np.sum(ELBO.percluster[[ka, kb]]) + ELBO.rest_term
+    # ELBO_bmerge = ELBO.total
 
     vbParamTemp = vbPar(
         np.concatenate(
@@ -940,17 +924,21 @@ def check_merge(maskedData, vbParam, suffStat, ka, kb, param, L, ELBO):
         muhatC = vbParamTemp.muhat[:, np.newaxis, K - 2, n]
         temp = np.dot(muhatC, suffStatTemp.sumY[:, np.newaxis, K - 2, n].T)
         invVhatTemp[:, :, 0, n] = invV + vbParamTemp.lambdahat[K - 2] * \
-            np.dot(muhatC, muhatC.T) - temp - temp.T + \
-            suffStatTemp.sumYSq[:, :, K - 2, n]
-
-        VhatTemp[:, :, 0, n] = safe_inversion(invVhatTemp[:, :, 0, n])
+                                  np.dot(muhatC, muhatC.T) - temp - temp.T + \
+                                  suffStatTemp.sumYSq[:, :, K - 2, n]
+        VhatTemp[:, :, 0, n] = np.linalg.solve(invVhatTemp[:, :, 0, n],
+                                               np.eye(nfeature))
     vbParamTemp.Vhat = np.concatenate(
         (vbParam.Vhat[:, :, no_kab, :], VhatTemp), axis=2)
     vbParamTemp.invVhat = np.concatenate(
         (vbParam.invVhat[:, :, no_kab, :], invVhatTemp), axis=2)
 
+    # vbParamTemp.update_local(maskedData)
+    # suffStatTemp = suffStatistics(maskedData, vbParamTemp)
+
     ELBO_amerge = ELBO_Class(maskedData, suffStatTemp, vbParamTemp, param,
-                             [K - 2])
+                            [K - 2])
+    # ELBO_amerge = ELBO_Class(maskedData, suffStatTemp, vbParamTemp, param)
     if ELBO_amerge.total < ELBO_bmerge:
         merged = 0
         return vbParam, suffStat, merged, L, ELBO
@@ -973,13 +961,16 @@ def spikesort(score, mask, group, param):
 
     vbParam = split_merge(maskedData, param)
 
-    n_data = score.shape[0]
-    rhat_full = np.zeros((n_data, vbParam.rhat.shape[1]))
-    for j in range(n_data):
-        rhat_full[j] = vbParam.rhat[group[j]]
+    # assignmentTemp = np.argmax(vbParam.rhat, axis=1)
 
-    vbParam.rhat = rhat_full
+    # assignment = np.zeros(score.shape[0], 'int16')
+    # for j in range(score.shape[0]):
+    #     assignment[j] = assignmentTemp[group[j]]
 
+    # idx_triage = cluster_triage(vbParam, score, 20)
+    # assignment[idx_triage] = -1
+
+    # return assignment, vbParam
     return vbParam
 
 
@@ -1000,6 +991,7 @@ def split_merge(maskedData, param):
         # print('merge',vbParam.rhat.shape[1])
 
         k_now = vbParam.rhat.shape[1]
+
         if (k_now > k_max) and (iter + extra_iter > n_iter):
             n_iter = iter + extra_iter
             k_max = k_now
@@ -1011,7 +1003,6 @@ def split_merge(maskedData, param):
 
 
 def cluster_triage(vbParam, score, threshold):
-
     maha = calc_mahalonobis(vbParam, score)
 
     cluster_id = np.argmin(maha, axis=1)
@@ -1021,7 +1012,6 @@ def cluster_triage(vbParam, score, threshold):
 
 
 def get_core_data(vbParam, score, n_max, threshold):
-
     n_data = vbParam.rhat.shape[0]
     n_units = int(np.max(vbParam.rhat[:, 1]) + 1)
 
@@ -1050,8 +1040,8 @@ def get_core_data(vbParam, score, n_max, threshold):
                     scoremhat[:, :, :, :, np.newaxis]),
                 axis=(3, 4),
                 keepdims=False))
-        maha = np.sum(maha, 1)
-        idx_data = idx_data[np.all(maha < threshold, axis=1)]
+        maha = np.squeeze(maha)
+        idx_data = idx_data[maha < threshold]
 
         if idx_data.shape[0] > n_max:
             idx_data = np.random.choice(idx_data, n_max, replace=False)
@@ -1079,7 +1069,6 @@ def calc_mahalonobis(vbParam, score):
 
 
 def merge_move_quick(maskedData, vbParam, cluster_id, param):
-
     n_merged = 0
     n_features, n_clusters, n_channels = vbParam.muhat.shape
 
@@ -1120,10 +1109,9 @@ def merge_move_quick(maskedData, vbParam, cluster_id, param):
 
 
 def make_list_by_id(cluster_id):
-
     n_clusters = np.max(cluster_id) + 1
 
-    cluster_id_list = [None]*n_clusters
+    cluster_id_list = [None] * n_clusters
 
     for k in range(n_clusters):
         cluster_id_list[k] = np.where(cluster_id == k)[0]
@@ -1132,7 +1120,6 @@ def make_list_by_id(cluster_id):
 
 
 def make_id_array(cluster_id_list, n_data):
-
     cluster_id_array = np.zeros(n_data, 'int32')
     n_clusters = len(cluster_id_list)
 
@@ -1143,7 +1130,6 @@ def make_id_array(cluster_id_list, n_data):
 
 
 def check_merge_quick(maskedData, vbParam, cluster_id, ka, kb, param):
-
     relevant_data = np.sort(np.hstack([cluster_id[ka], cluster_id[kb]]))
     maskedData_small = maskData()
     maskedData_small.sumY = maskedData.sumY[relevant_data]
@@ -1212,9 +1198,3 @@ def check_merge_quick(maskedData, vbParam, cluster_id, ka, kb, param):
         vbParam.ahat = np.concatenate(
             [vbParam.ahat[no_kab], vbParam_after.ahat],
             axis=0)
-
-        del cluster_id[np.max((ka, kb))]
-        del cluster_id[np.min((ka, kb))]
-        cluster_id.append(relevant_data)
-
-        return vbParam, cluster_id, merged

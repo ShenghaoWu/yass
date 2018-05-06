@@ -8,6 +8,11 @@ import numpy as np
 import parmap
 import yaml
 
+try:
+    from pathlib2 import Path
+except Exception:
+    from pathlib import Path
+
 from yass import read_config
 from yass.geometry import make_channel_index
 from yass.preprocess.filter import filter_standardize, merge_filtered_files
@@ -68,6 +73,7 @@ def run(output_directory='tmp/', if_file_exists='skip'):
     .. literalinclude:: ../../examples/pipeline/preprocess.py
     """
 
+    print ("********* firsbatch preprocessing")
     logger = logging.getLogger(__name__)
 
     CONFIG = read_config()
@@ -90,36 +96,36 @@ def run(output_directory='tmp/', if_file_exists='skip'):
         data_order=CONFIG.recordings.order)
 
     # Generate params:
-    standarized_path = TMP + "standarized.bin"
-    standarized_params = params
-    standarized_params['dtype'] = 'float32'
+    standardized_path = TMP + "standardized_firstbatch.bin"
+    standardized_params = params
+    standardized_params['dtype'] = 'float32'
 
-    # Check if data already saved to disk and skip:
-    if if_file_exists == 'skip':
-        f_out = os.path.join(CONFIG.data.root_folder, output_directory,
-                             "standarized.bin")
-        if os.path.exists(f_out):
+    ## Check if data already saved to disk and skip:
+    #if if_file_exists == 'skip':
+        #f_out = os.path.join(CONFIG.data.root_folder, output_directory,
+                             #"standarized.bin")
+        #if os.path.exists(f_out):
 
-            channel_index = make_channel_index(CONFIG.neigh_channels,
-                                               CONFIG.geom, 2)
+            #channel_index = make_channel_index(CONFIG.neigh_channels,
+                                               #CONFIG.geom, 2)
 
-            # Cat: this is redundant, should save to disk/not recompute
-            whiten_filter = whiten.matrix(
-                standarized_path,
-                standarized_params['dtype'],
-                standarized_params['n_channels'],
-                standarized_params['data_order'],
-                channel_index,
-                CONFIG.spike_size,
-                CONFIG.resources.max_memory,
-                TMP,
-                output_filename='whitening.npy',
-                if_file_exists=if_file_exists)
+            ## Cat: this is redundant, should save to disk/not recompute
+            #whiten_filter = whiten.matrix(
+                #standarized_path,
+                #standarized_params['dtype'],
+                #standarized_params['n_channels'],
+                #standarized_params['data_order'],
+                #channel_index,
+                #CONFIG.spike_size,
+                #CONFIG.resources.max_memory,
+                #TMP,
+                #output_filename='whitening.npy',
+                #if_file_exists=if_file_exists)
 
-            path_to_channel_index = os.path.join(TMP, "channel_index.npy")
+            #path_to_channel_index = os.path.join(TMP, "channel_index.npy")
 
-            return (str(standarized_path), standarized_params, channel_index,
-                    whiten_filter)
+            #return (str(standarized_path), standarized_params, channel_index,
+                    #whiten_filter)
 
     # read config params
     multi_processing = CONFIG.resources.multi_processing
@@ -155,7 +161,7 @@ def run(output_directory='tmp/', if_file_exists='skip'):
     idx_list = np.int64(np.vstack(idx_list))
     proc_indexes = np.arange(len(idx_list))
 
-    print("# of chunks: ", len(idx_list))
+    print(" Processing first chunk of recording ")
 
     # Make directory to hold filtered batch files:
     filtered_location = os.path.join(CONFIG.data.root_folder, output_directory,
@@ -164,39 +170,23 @@ def run(output_directory='tmp/', if_file_exists='skip'):
     if not os.path.exists(filtered_location):
         os.makedirs(filtered_location)
 
-    # filter and standardize in one step
-    if multi_processing:
-        parmap.map(
-            filter_standardize,
-            zip(idx_list, proc_indexes),
-            low_frequency,
-            high_factor,
-            order,
-            sampling_rate,
-            buffer_size,
-            filename_dat,
-            n_channels,
-            CONFIG.data.root_folder,
-            output_directory,
-            processes=n_processors,
-            pm_pbar=True)
-    else:
-        for k in range(len(idx_list)):
-            filter_standardize([idx_list[k], k], low_frequency, high_factor,
-                               order, sampling_rate, buffer_size, filename_dat,
-                               n_channels, CONFIG.data.root_folder,
-                               output_directory)
+    # filter and standardize in one step, return standardized chunk
+    # Cat: TODO: re-parallelize this
+    recording_standardized = filter_standardize([idx_list[0], 0], 
+                                low_frequency, high_factor,
+                                order, sampling_rate, buffer_size, 
+                                filename_dat, n_channels, 
+                                CONFIG.data.root_folder, output_directory)
 
-    # Merge the chunk filtered files and delete the individual chunks
-    merge_filtered_files(CONFIG.data.root_folder, output_directory)
+    print (recording_standardized.shape)
 
     # save yaml file with params
-    path_to_yaml = standarized_path.replace('.bin', '.yaml')
+    path_to_yaml = standardized_path.replace('.bin', '.yaml')
 
     params = dict(
-        dtype=standarized_params['dtype'],
-        n_channels=standarized_params['n_channels'],
-        data_order=standarized_params['data_order'])
+        dtype=standardized_params['dtype'],
+        n_channels=standardized_params['n_channels'],
+        data_order=standardized_params['data_order'])
 
     with open(path_to_yaml, 'w') as f:
         logger.info('Saving params...')
@@ -211,19 +201,16 @@ def run(output_directory='tmp/', if_file_exists='skip'):
     # OLD CODE: compute whiten filter using batch processor
     # TODO: remove whiten_filter out of output argument
 
-    whiten_filter = whiten.matrix(
-        standarized_path,
-        standarized_params['dtype'],
-        standarized_params['n_channels'],
-        standarized_params['data_order'],
-        channel_index,
-        CONFIG.spike_size,
-        # CONFIG.resources.max_memory,
-        '50MB',
-        TMP,
-        output_filename='whitening.npy',
-        if_file_exists=if_file_exists)
+    whiten_filter = whiten._matrix(recording_standardized, 
+                                   channel_index, CONFIG.spike_size)
 
+    # save whiten matrix
+    path_to_whitening_matrix = Path(TMP, 'whitening.npy')
+    save_numpy_object(whiten_filter, path_to_whitening_matrix,
+                      if_file_exists='overwrite',
+                      name='whitening filter')
+    
+    # save channel index
     path_to_channel_index = os.path.join(TMP, 'channel_index.npy')
     save_numpy_object(
         channel_index,
@@ -231,5 +218,8 @@ def run(output_directory='tmp/', if_file_exists='skip'):
         if_file_exists=if_file_exists,
         name='Channel index')
 
-    return (str(standarized_path), standarized_params, channel_index,
-            whiten_filter)
+    np.save(standardized_path.replace('.bin','.npy'), recording_standardized)
+    np.save(standardized_path.replace('.bin','_params.npy'), standardized_params)
+
+    return (recording_standardized, str(standardized_path), 
+            standardized_params, channel_index, whiten_filter)

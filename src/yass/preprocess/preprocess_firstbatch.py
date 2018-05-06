@@ -206,8 +206,6 @@ def run(output_directory='tmp/', if_file_exists='skip'):
     # this when initializing the config object and then access it from there
     channel_index = make_channel_index(CONFIG.neigh_channels, CONFIG.geom, 2)
 
-    # print CONFIG.resources.max_memory
-    # quit()
     # Cat: TODO: need to make this much smaller in size, don't need such
     # large batches
     # OLD CODE: compute whiten filter using batch processor

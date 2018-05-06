@@ -6,7 +6,7 @@ from yass.evaluate.stability import (MeanWaveCalculator,
                                      RecordingAugmentation,
                                      RecordingBatchIterator,
                                      SpikeSortingEvaluation)
-from yass.evaluate.visualization import ChristmasPlot, WaveFormTrace
+from yass.evaluate.visualization import ChristmasPlot
 from yass.evaluate.util import temp_snr
 from yass.pipeline import run
 
@@ -17,12 +17,11 @@ class Analyzer(object):
     def __init__(self, config, gold_std_spike_train=None):
         """Sets up the analyzer object with configurations.
 
-        Parameters
-        ----------
-        config: str or map
+        Parameters:
+            config: str or map
             Absolute path to the yass config file for the dataset.
             Alternatively, map of configuration options.
-        gold_std_spike_train: numpy.ndarray of shape (N, 2) or None
+            gold_std_spike_train: numpy.ndarray of shape (N, 2) or None
             Gold standard spike train where first column corresponds to
             spike times and second column corresponds to cluster identities.
             If None, then no accuracy evaluation will be done.
@@ -71,9 +70,8 @@ class Analyzer(object):
     def run_stability(self, n_batches=6):
         """Runs stability metric computation for the given config file.
 
-        Parameters
-        ----------
-        n_batchs: int
+        Parameters:
+            n_batchs: int
             Break down the processing of the dataset in these many batches.
         """
         # Check whether this analysis is not done already.
@@ -175,15 +173,12 @@ class Analyzer(object):
             aug_gold_spt, yass_aug_spike_train, gold_aug_templates,
             yass_aug_templates)
         # Saving results of evaluation for stability.
-        stability_results = np.array(
-                [stability_eval.true_positive, stability_eval.false_positive,
-                    stability_eval.unit_cluster_map])
-        np.save(self.stability_file, stability_results)
+        np.save(self.stability_file, stability_eval.true_positive)
 
     def run_accuracy(self):
         """Runs accuracy evaluation for the config file.
 
-        This can be performed only if there is a gold standard
+        Note: This can be performed only if there is a gold standard
         spike train and run_stability has been called before.
         """
         # Check whether this analysis is not done already.
@@ -198,10 +193,7 @@ class Analyzer(object):
         accuracy_eval = SpikeSortingEvaluation(
             self.gold_std_spike_train, spike_train, gold_templates, templates)
         # Saving results of evaluation for accuracy.
-        accuracy_results = np.array(
-                [accuracy_eval.true_positive, accuracy_eval.false_positive,
-                    accuracy_eval.unit_cluster_map])
-        np.save(self.accuracy_file, accuracy_results)
+        np.save(self.accuracy_file, accuracy_eval.true_positive)
 
     def run_analyses(self, n_batches=6):
         """Runs the analyses on the dataset indicated in config.
@@ -209,78 +201,37 @@ class Analyzer(object):
         Note: This step has to be called only when the stability has been
         evaluated.
 
-        Parameters
-        ----------
-        n_batchs: int
+        Parameters:
+            n_batchs: int
             Break down the processing of the dataset in these many batches.
         """
         self.run_stability(n_batches=n_batches)
         self.run_accuracy()
 
-    def visualize(self, metric, units=None):
+    def visualize(self, metric):
         """Visualizes the metric of interest.
 
-        Parameters
-        ----------
+        Parameters:
+        -----------
         metric: str, 'stability', 'accuracy'
             The type of metric that should be visualized.
-        units: list of int
-            In case the analyse applies to a subset of units, display only
-            the mentioned units.
         """
-        if metric == 'stability' and units is None:
+        if metric == 'stability':
             data_title = self.config['data']['recordings']
             plot = ChristmasPlot(data_title, eval_type=metric)
             templates = np.load(self.gold_aug_templates_file)
-            stability = np.load(self.stability_file)[0]
+            stability = np.load(self.stability_file)
             # Add the log PNR of templates and stability.
             plot.add_metric(np.log(temp_snr(templates)), stability)
             plot.generate_snr_metric_plot(show_id=True)
             plot.generate_curve_plots()
 
-        elif metric == 'stability':
-            templates = np.load(self.gold_aug_templates_file)
-            geom = np.load(os.path.join(self.tmp_dir, 'geom.npy'))
-            result = np.load(self.stability_file)
-            stab_tp = result[0]
-            stab_fp = result[1]
-            unit_map = result[2].astype('int')
-            yass_templates = np.load(self.yass_aug_templates_file)
-            n_units = len(stab_tp)
-            labels = []
-            for unit in range(n_units):
-                labels.append("Unit {}, TP: {:.2f}, FP: {:.2f}".format(
-                    unit, stab_tp[unit], stab_fp[unit]))
-            plot = WaveFormTrace(
-                    geometry=geom, templates=templates, unit_labels=labels,
-                    templates_sec=yass_templates, unit_map=unit_map)
-            plot.plot_wave(units)
-
-        elif metric == 'accuracy' and units is None:
+        if metric == 'accuracy':
             data_title = self.config['data']['recordings']
             plot = ChristmasPlot(data_title, eval_type=metric)
             templates = np.load(self.gold_templates_file)
-            accuracy = np.load(self.accuracy_file)[0]
-            # Add the log PNR of templates and accuracy.
+            accuracy = np.load(self.accuracy_file)
+            # Add the log PNR of templates and stability.
             plot.add_metric(np.log(temp_snr(templates)), accuracy)
             plot.generate_snr_metric_plot(show_id=True)
             plot.generate_curve_plots()
-
-        elif metric == 'accuracy':
-            templates = np.load(self.gold_templates_file)
-            yass_templates = np.load(self.yass_templates_file)
-            geom = np.load(os.path.join(self.tmp_dir, 'geom.npy'))
-            result = np.load(self.accuracy_file)
-            acc_tp = result[0]
-            acc_fp = result[1]
-            unit_map = result[2].astype('int')
-            n_units = len(acc_tp)
-            labels = []
-            for unit in range(n_units):
-                labels.append("Unit {}, TP: {:.2f}, FP: {:.2f}".format(
-                    unit, acc_tp[unit], acc_fp[unit]))
-
-            plot = WaveFormTrace(
-                    geometry=geom, templates=templates, unit_labels=labels,
-                    templates_sec=yass_templates, unit_map=unit_map)
-            plot.plot_wave(units)

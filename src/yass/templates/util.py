@@ -49,6 +49,106 @@ def get_templates(spike_train,
     return templates, weights
 
 
+
+def get_templates_parallel_firstbatch(standardized_recording, spike_train,
+                           path_to_recordings,
+                           out_dir,
+                           CONFIG,
+                           n_max=5000):
+
+    ''' Compute templates in parallel by chunking over data in memory
+    '''
+
+    spike_size = 2 * (CONFIG.spike_size + CONFIG.templates.max_shift)
+    n_processors = CONFIG.resources.n_processors
+    n_channels = CONFIG.recordings.n_channels
+    sampling_rate = CONFIG.recordings.sampling_rate
+    # n_sec_chunk = CONFIG.resources.n_sec_chunk
+    n_sec_chunk = 100       # Cat: set this from config file
+
+    # number of templates
+    n_templates = int(np.max(spike_train[:, 1]) + 1)
+    print ("N-templates: ", n_templates)
+    
+    # Cat: random subsmplae to be parallelized
+    #spike_train_small = random_sample_spike_train(spike_train, n_max, CONFIG)
+    spike_train_small = spike_train
+
+    fp_len = standardized_recording.shape[0]
+
+    buffer_size = 200   # Cat: to set this in CONFIG file
+
+    indexes = np.arange(0, fp_len , sampling_rate * n_sec_chunk)
+    if indexes[-1] != fp_len / n_channels:
+        indexes = np.hstack((indexes, fp_len))
+
+    # make index list for indexing into recordings     
+    idx_list = []
+    for k in range(len(indexes) - 1):
+        idx_list.append([
+            indexes[k], indexes[k + 1], buffer_size,
+            indexes[k + 1] - indexes[k] + buffer_size, k
+        ])
+
+    idx_list = np.int64(np.vstack(idx_list))
+    #print idx_list
+
+    rec_chunks = []
+    # buffer data going into neural network: 
+    # read chunk plus buffer at end
+    for ctr,index in enumerate(idx_list): 
+        if ctr==0: 
+            data_temp = standardized_recording[index[0]:index[1]+buffer_size] 
+            data_temp = np.vstack((np.zeros((buffer_size,n_channels),'float32'),data_temp))
+        else:
+            data_temp = standardized_recording[index[0]-buffer_size:index[1]+buffer_size] 
+            
+            if data_temp.shape[0]!=(buffer_size*2+index[1]-index[0]):
+                data_temp = np.vstack((data_temp,
+                                np.zeros((buffer_size,n_channels),'float32')))
+        
+        rec_chunks.append(data_temp)
+    
+    print("...computing templates (fixed chunk to 100sec for efficiency)")
+    #if CONFIG.resources.multi_processing:
+    if False:
+        res = parmap.map(
+            compute_weighted_templates_parallel_firstbatch,
+            zip(rec_chunks, idx_list),
+            spike_train_small,
+            spike_size,
+            n_templates,
+            n_channels,
+            buffer_size,
+            processes=n_processors,
+            pm_pbar=True)
+    else:
+        res = []
+        for k in range(len(idx_list)):
+            #print ("Chunk: ", idx_list[k])
+            temp = compute_weighted_templates_parallel_firstbatch(
+                [rec_chunks[k], idx_list[k]], spike_train_small, 
+                spike_size, n_templates, n_channels, buffer_size)
+            
+            res.append(temp)
+
+    # Reconstruct templates from parallel proecessing
+    print("... reconstructing templates")
+    res0 = np.zeros(res[0][0].shape)
+    res1 = np.zeros(res[0][1].shape)
+    for k in range(len(res)):
+        res0 += res[k][0]
+        res1 += res[k][1]
+
+    print("... dividing templates by weights")
+    templates = res0
+    weights = res1
+    weights[weights == 0] = 1
+    templates = templates / weights[np.newaxis, np.newaxis, :]
+
+    return templates, weights
+
+
 # TODO: remove this function and use the explorer directly
 def get_templates_parallel(spike_train,
                            path_to_recordings,
@@ -62,7 +162,7 @@ def get_templates_parallel(spike_train,
     n_channels = CONFIG.recordings.n_channels
     sampling_rate = CONFIG.recordings.sampling_rate
     # n_sec_chunk = CONFIG.resources.n_sec_chunk
-    n_sec_chunk = 100
+    n_sec_chunk = 100       # Cat: to do fix this issue
 
     # number of templates
     n_templates = int(np.max(spike_train[:, 1]) + 1)
@@ -176,6 +276,53 @@ def compute_weighted_templates(recording, idx_local, idx, previous_batch,
 def prPurple(prt):
     print("\033[95m {}\033[00m".format(prt))
 
+
+def compute_weighted_templates_parallel_firstbatch(data_in, spike_train, 
+                                        spike_size, n_templates, n_channels, 
+                                        buffer_size):
+
+    recording = data_in[0]
+    #proc_index = data_in[4]
+    
+    # New indexes
+    idx_start = data_in[1][0]
+    idx_stop = data_in[1][1]
+    idx_local = data_in[1][2]
+
+    data_start = idx_start
+    data_end = idx_stop
+    offset = idx_local
+
+    # Compute search time
+    spike_time = spike_train[:, 0]
+    spike_train = spike_train[np.logical_and(spike_time >= data_start,
+                                             spike_time < data_end)]
+    spike_train[:, 0] = spike_train[:, 0] - data_start + offset
+
+    # calculate weight templates
+    weighted_templates = np.zeros(
+        (n_templates, 2 * spike_size + 1, n_channels), dtype=np.float32)
+    weights = np.zeros(n_templates)
+    
+    print recording.shape
+
+    for k in range(n_templates):
+        spt = spike_train[spike_train[:, 1] == k]
+        n_spikes = spt.shape[0]
+        if n_spikes > 0:
+            weighted_templates[k] = np.average(
+                recording[spt[:, [0]].astype('int32')
+                          + np.arange(-spike_size, spike_size + 1)],
+                axis=0,
+                weights=spt[:, 2])
+            weights[k] = np.sum(spt[:, 2])
+            weighted_templates[k] *= weights[k]
+
+    weighted_templates = np.transpose(weighted_templates, (2, 1, 0))
+
+    # print (weighted_templates.shape, weights.shape)
+
+    return weighted_templates, weights
 
 def compute_weighted_templates_parallel(data_in, spike_train, spike_size,
                                         n_templates, n_channels, buffer_size,

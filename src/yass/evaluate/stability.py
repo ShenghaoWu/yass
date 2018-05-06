@@ -11,7 +11,7 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import pdist, squareform, cdist
 from tqdm import tqdm
 
-from yass.geometry import find_channel_neighbors, parse
+from yass.geometry import find_channel_neighbors
 from yass.evaluate.stability_filters import butterworth, whitening
 
 
@@ -62,7 +62,10 @@ class RecordingBatchIterator(object):
         self.n_batches = n_batches
         self.n_chan = n_chan
         self.radius = radius
-        self.geometry = parse(geom_file, n_chan)
+        if geom_file.endswith('.txt'):
+            self.geometry = np.genfromtxt(geom_file, delimiter=' ')
+        elif geom_file.endswith('.npy'):
+            self.geometry = np.load('geom_file')
         self.neighbs = find_channel_neighbors(
             self.geometry, self.radius)
         self.filter_std = filter_std
@@ -155,8 +158,8 @@ class MeanWaveCalculator(object):
 
 class RecordingAugmentation(object):
 
-    def __init__(self, mean_wave_calculator, move_rate,
-                 augment_rate, dist_factor=0.5, refractory_period=2.0):
+    def __init__(self, mean_wave_calculator,
+                 move_rate, augment_rate, dist_factor=0.5):
         """Sets up the object for stability metric computations.
 
         Parameters
@@ -167,9 +170,6 @@ class RecordingAugmentation(object):
             will be moved spatially around.
             dist_factor: float [0, 1]. How far the should the template
             move spatially. 0 represents no movement and 1 furtherst.
-            refractory_period: float
-            The minimum time between spikes of the same unit/cluster in
-            milli-seconds.
         """
         self.template_comp = mean_wave_calculator
         self.geometry = mean_wave_calculator.batch_reader.geometry
@@ -183,9 +183,6 @@ class RecordingAugmentation(object):
         self.move_rate = move_rate
         self.augment_rate = augment_rate
         self.dist_factor = dist_factor
-        # Convert refractory period to time samples.
-        sampling_rate = mean_wave_calculator.batch_reader.s_rate
-        self.refrac_period = refractory_period * 1e-3 * sampling_rate
 
     def construct_channel_map(self):
         """Constucts a map of coordinate to channel index."""
@@ -194,86 +191,6 @@ class RecordingAugmentation(object):
             self.geom_map[(self.geometry[i, 0], self.geometry[i, 1])] = i
         pair_dist = squareform(pdist(self.geometry))
         self.closest_channels = np.argsort(pair_dist, axis=1)
-
-    def correct_spike_time(self, spike_times, aug_spike_times):
-        """Corrects any violation of refractory period for spike times.
-
-        Parameters
-        ----------
-        spike_times: numpy.array
-            Sorted numpy.array of base spike times.
-        aug_spike_times: numpy.array
-            Sorted numpy.array of spike times to be added to the base. These
-            should not violate refractory period among themselves.
-
-        Returns
-        -------
-        numpy.array
-            New augmented spike times where there is no violation of refractory
-            period time with respect to the combined spike train.
-        """
-        if len(spike_times) == 0 or len(aug_spike_times) == 0:
-            return aug_spike_times
-        # Number of spikes that violate refractory period.
-        num_violation = 0
-        # Silent periods that more spikes can be added.
-        silent_period = []
-        # Last spike time that was added, combined between the two.
-        last_spike_time = 0
-        # The spike that was added the current iteration, combined between
-        # the two spike trains.
-        current_spike_time = 0
-        valid_spike_times = []
-
-        remove_idx = []
-        for i in range(1, len(aug_spike_times)):
-            diff = aug_spike_times[i] - aug_spike_times[i - 1]
-            if diff < self.refrac_period:
-                remove_idx.append(i - 1)
-                num_violation += 1
-        aug_spike_times = np.delete(aug_spike_times, remove_idx)
-        # Cursor on the base spike times.
-        i = 0
-        # Cursor on the augmented spike_times.
-        j = 0
-        while i < len(spike_times) or j < len(aug_spike_times):
-            diff = 0
-            if i >= len(spike_times):
-                # We saw all base spike times.
-                diff = self.refrac_period + 1
-            elif j >= len(aug_spike_times):
-                # We saw all augmented spikes.
-                diff = - self.refrac_period - 1
-            else:
-                diff = spike_times[i] - aug_spike_times[j]
-
-            if diff > self.refrac_period:
-                current_spike_time = aug_spike_times[j]
-                valid_spike_times.append(current_spike_time)
-                j += 1
-
-            elif diff > - self.refrac_period and diff < self.refrac_period:
-                # Violating refrac period with respect to base spike_times
-                j += 1
-                current_spike_time = last_spike_time
-                num_violation += 1
-            else:
-                current_spike_time = spike_times[i]
-                i += 1
-            # Check whether there is a silent period.
-            silence = current_spike_time - last_spike_time
-            if silence > 2 * self.refrac_period:
-                silent_period.append((last_spike_time, current_spike_time))
-            last_spike_time = current_spike_time.astype('int')
-
-        # Add as many unvalid augmented spike times as possible back.
-        i = 0
-        while num_violation > 0 and i < len(silent_period):
-            valid_spike_times.append(
-                    silent_period[i][0] + self.refrac_period)
-            i += 1
-            num_violation -= 1
-        return np.sort(np.array(valid_spike_times)).astype('int')
 
     def move_spatial_trace(self, template, spatial_size=10, mode='amp'):
         """Moves the waveform spatially around the probe.
@@ -363,6 +280,7 @@ class RecordingAugmentation(object):
             Between 0 and 1. Augmented spikes per unit (percentage of total
             spikes per unit).
         """
+        refractory_period = 60
         spt = self.template_comp.spike_train
         # We sample a new set of spike times per cluster.
         times = []
@@ -384,11 +302,9 @@ class RecordingAugmentation(object):
             # sampled differential times.
             offsets = np.sort(
                 np.random.choice(spt_u, new_spike_count, replace=False))
-            # Enforce refractory period.
-            diffs[diffs < self.refrac_period] = self.refrac_period
-            new_spikes = offsets + diffs
-            new_spikes = self.correct_spike_time(spt_u, new_spikes)
-            times += list(new_spikes)
+
+            diffs[diffs < refractory_period] += refractory_period
+            times += list(offsets + diffs)
             cid += [u] * new_spike_count
         return np.array([times, cid]).T
 
@@ -495,8 +411,7 @@ class RecordingAugmentation(object):
 
 class SpikeSortingEvaluation(object):
 
-    def __init__(self, spt_base, spt, tmp_base=None, tmp=None,
-                 method='hungarian'):
+    def __init__(self, spt_base, spt, tmp_base, tmp, method='hungarian'):
         """Sets up the evaluation object with two spike trains.
 
         Parameters
@@ -506,17 +421,11 @@ class SpikeSortingEvaluation(object):
             and second the cluster identities.
         spt: numpy.ndarray
             Shape [M, 2].
-        tmp_base: numpy.ndarray or None
-            Shape [T1, C, N]. Ground truth unit mean waveforms. If None,
-            hungarian algorithm is used for matching.
-        tmp_base: numpy.ndarray or None
-            Shape [T2, C, M]. Clustering units mean waveforms. If None,
-            the hungarian algorithm is used for matching.
-        method: str, 'greedy' or 'hungarian'
-            Method for matching clusters/units.
+        tmp_base: numpy.ndarray
+            Shape [T1, C, N]. Ground truth unit mean waveforms.
+        tmp_base: numpy.ndarray
+            Shape [T2, C, M]. Clustering units mean waveforms.
         """
-        if tmp_base is None or tmp is None:
-            method = 'hungarian'
         # clean the spike train before calling this function.
         self.tmp_base = tmp_base
         self.tmp = tmp
@@ -602,11 +511,32 @@ class SpikeSortingEvaluation(object):
         method: str. 'hungarian', 'greedy'
             Method of matching base units to clusters.
         """
+        # Calculate and match energy of templates.
+        # energy_base = np.linalg.norm(self.tmp_base, axis=0)
+        # energy = np.linalg.norm(self.tmp, axis=0)
+        energy_base = np.max(self.tmp_base, axis=0)
+        energy = np.max(self.tmp, axis=0)
+        energy_dist = cdist(energy_base.T, energy.T)
         # Maps ground truth unit to matched cluster unit.
         # -1 indicates no matching if n_units > n_clusters.
         unmatched_clusters = list(range(self.n_clusters))
         self.unit_cluster_map = np.zeros(self.n_units, dtype='int') - 1
 
+        # First match the largest energy ground truth templates.
+        for unit in reversed(np.argsort(np.linalg.norm(energy_base, axis=0))):
+
+            if len(unmatched_clusters) < 1:
+                break
+            # TODO(hooshmand): Find a fix for template comparison.
+            # If the closest template is not very similar skip it.
+            # if (np.min(energy_dist[unit, unmatched_clusters]) >
+            # 1/4 * np.linalg.norm(energy_base[:, unit])):
+            # continue
+
+            matched_cluster_id = unmatched_clusters[np.argmin(
+                energy_dist[unit, unmatched_clusters])]
+            unmatched_clusters.remove(matched_cluster_id)
+            self.unit_cluster_map[unit] = matched_cluster_id
         if method == 'hungarian':
             # Compute the accuracy confusion matrix.
             percent_matrix = self.confusion_matrix / np.reshape(
@@ -616,15 +546,11 @@ class SpikeSortingEvaluation(object):
             self.unit_cluster_map[units] = clusters
 
         elif method == 'greedy':
-            # Calculate and match energy of templates.
-            # The energy is based on amplitude (l-inf norm).
-            energy_base = np.max(self.tmp_base, axis=0)
-            energy = np.max(self.tmp, axis=0)
-            energy_dist = cdist(energy_base.T, energy.T)
+            # First match the largest energy ground truth templates.
             ordered_units = reversed(
                 np.argsort(np.linalg.norm(energy_base, axis=0)))
-            # First match the largest energy ground truth templates.
             for unit in ordered_units:
+
                 if len(unmatched_clusters) < 1:
                     break
                 # TODO(hooshmand): Find a fix for template comparison.
@@ -632,12 +558,9 @@ class SpikeSortingEvaluation(object):
                 # if (np.min(energy_dist[unit, unmatched_clusters]) >
                 # 1/4 * np.linalg.norm(energy_base[:, unit])):
                 # continue
-                # Also, something like selecting the template with
-                # the closest shape, e.g. the following zombie code line.
+
                 matched_cluster_id = unmatched_clusters[np.argmin(
                     energy_dist[unit, unmatched_clusters])]
-                matched_cluster_id = unmatched_clusters[np.argmax(
-                    self.confusion_matrix[unit, unmatched_clusters])]
                 unmatched_clusters.remove(matched_cluster_id)
                 self.unit_cluster_map[unit] = matched_cluster_id
         # Units which have a match in the clusters.

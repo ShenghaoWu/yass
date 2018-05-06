@@ -1,6 +1,7 @@
 import logging
 import datetime
 import numpy as np
+import os
 
 from yass import read_config
 from yass.util import file_loader, check_for_files, LoadFile
@@ -9,6 +10,7 @@ from yass.cluster.triage import triage
 from yass.cluster.coreset import coreset
 from yass.cluster.mask import getmask
 from yass.cluster.util import (run_cluster, run_cluster_location,
+                               run_cluster_location_firstbatch,
                                calculate_sparse_rhat)
 from yass.mfm import get_core_data
 
@@ -23,7 +25,8 @@ from yass.mfm import get_core_data
     relative_to='output_directory',
     auto_save=True,
     prepend_root_folder=True)
-def run(scores,
+    
+def run(standardized_recording,
         spike_index,
         output_directory='tmp/',
         if_file_exists='skip',
@@ -32,11 +35,6 @@ def run(scores,
 
     Parameters
     ----------
-    scores: numpy.ndarray (n_spikes, n_features, n_channels), str or Path
-        3D array with the scores for the clear spikes, first simension is
-        the number of spikes, second is the nymber of features and third the
-        number of channels. Or path to a npy file
-
     spike_index: numpy.ndarray (n_clear_spikes, 2), str or Path
         2D array with indexes for spikes, first column contains the
         spike location in the recording and the second the main channel
@@ -69,7 +67,6 @@ def run(scores,
 
     """
     # load files in case they are strings or Path objects
-    scores = file_loader(scores)
     spike_index = file_loader(spike_index)
 
     CONFIG = read_config()
@@ -80,72 +77,37 @@ def run(scores,
 
     logger = logging.getLogger(__name__)
 
-    scores_all = np.copy(scores)
     spike_index_all = np.copy(spike_index)
 
-    ##########
-    # Triage #
-    ##########
+    # ******************* SUBSAMPLE AND TRIAGE **************************
+    # Cat: bypass subsample and triage for now; they should be implemented
+    # inside featurization function anyways 
 
+    # ******************* CLUSTERING *********************
     _b = datetime.datetime.now()
-    logger.info("Randomly subsampling...")
-    scores, spike_index = random_subsample(scores, spike_index,
-                                           CONFIG.cluster.max_n_spikes)
-    logger.info("Triaging...")
-    scores, spike_index = triage(
-        scores, spike_index, CONFIG.cluster.triage.nearest_neighbors,
-        CONFIG.cluster.triage.percent, CONFIG.cluster.method == 'location')
-    Time['t'] += (datetime.datetime.now() - _b).total_seconds()
+    logger.info("Clustering ")
 
-    if CONFIG.cluster.method == 'location':
-        ##############
-        # Clustering #
-        ##############
-        _b = datetime.datetime.now()
-        logger.info("Clustering...")
-        vbParam, tmp_loc, scores, spike_index = run_cluster_location(
-            scores, spike_index, CONFIG.cluster.min_spikes, CONFIG)
-        Time['s'] += (datetime.datetime.now() - _b).total_seconds()
+    vbParam, tmp_loc, scores, spike_index = run_cluster_location_firstbatch(
+                        standardized_recording, spike_index,
+                        CONFIG.cluster.min_spikes, CONFIG)
 
-    else:
-        ###########
-        # Coreset #
-        ###########
-        _b = datetime.datetime.now()
-        logger.info("Coresetting...")
-        groups = coreset(scores,
-                         spike_index,
-                         CONFIG.cluster.coreset.clusters,
-                         CONFIG.cluster.coreset.threshold)
-        Time['c'] += (datetime.datetime.now() - _b).total_seconds()
+    Time['s'] += (datetime.datetime.now() - _b).total_seconds()
 
-        ###########
-        # Masking #
-        ###########
-        _b = datetime.datetime.now()
-        logger.info("Masking...")
-        masks = getmask(scores, spike_index, groups, CONFIG.cluster.masking_threshold)
-        Time['m'] += (datetime.datetime.now() - _b).total_seconds()
+    np.save(os.path.join(CONFIG.data.root_folder, output_directory,
+                        'spike_train_clear_preclean.npy'),spike_index)
 
-        ##############
-        # Clustering #
-        ##############
-        _b = datetime.datetime.now()
-        logger.info("Clustering...")
-        vbParam, tmp_loc, scores, spike_index = run_cluster(
-            scores, masks, groups, spike_index, CONFIG.cluster.min_spikes,
-            CONFIG)
-        Time['s'] += (datetime.datetime.now() - _b).total_seconds()
-        
-    #********************
-    neigh_chan = np.eye(CONFIG.recordings.n_channels).astype('bool')   #Nishchal turning off local merge
-    
-    
-    vbParam.rhat = calculate_sparse_rhat(
-        vbParam, tmp_loc, scores_all, spike_index_all, neigh_chan)  #To run on change to CONFIG.neigh_chan
-    idx_keep = get_core_data(vbParam, scores_all, np.inf, 5)
+
+    #************* ADDITIONAL STEPS ?! ***************
+
+    #neigh_chan = np.eye(CONFIG.recordings.n_channels).astype('bool')   # Cat: Nishchal turned off local merge
+
+    # Cat: sparse hat calculations
+    #vbParam.rhat = calculate_sparse_rhat(
+    #    vbParam, tmp_loc, scores_all, spike_index_all, neigh_chan)  #To run on change to CONFIG.neigh_chan
+
+    idx_keep = get_core_data(vbParam, scores, np.inf, 5)
     spike_train = vbParam.rhat[idx_keep]
-    spike_train[:, 0] = spike_index_all[spike_train[:, 0].astype('int32'), 0]
+    spike_train[:, 0] = spike_index[spike_train[:, 0].astype('int32'), 0]
 
     # report timing
     currentTime = datetime.datetime.now()
@@ -156,4 +118,22 @@ def run(scores,
     logger.info("\tmasking:\t{0} seconds".format(Time['m']))
     logger.info("\tclustering:\t{0} seconds".format(Time['s']))
 
-    return spike_train, tmp_loc, vbParam
+
+    np.save(os.path.join(CONFIG.data.root_folder, output_directory,
+                        'spike_train_clear_postcluster.npy'),spike_train)
+    np.save(os.path.join(CONFIG.data.root_folder, output_directory,
+                                               'tmp_loc.npy'), tmp_loc)
+    np.save(os.path.join(CONFIG.data.root_folder, output_directory,
+                                               'vbParam.npy'), vbParam)
+
+
+    return spike_train, tmp_loc, vbParam, scores
+
+
+
+
+
+
+
+
+
